@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "classes": {
+    "public": {"examples": ["service_description", "faq"], "default_location": "gcp_or_private", "cross_cloud": "allowed"},
+    "internal": {"examples": ["synthetic_operational_metadata", "non_sensitive_configuration"], "default_location": "private", "cross_cloud": "approved_metadata_only"},
+    "sensitive": {"examples": ["synthetic_identity", "appointment_ownership", "encounter_metadata"], "default_location": "private", "cross_cloud": "approved_reference_or_aggregate_only"},
+    "restricted-clinical": {"examples": ["synthetic_fhir_clinical_resource", "synthetic_dicom", "clinical_record_content"], "default_location": "private", "cross_cloud": "prohibited_by_default"}
+  },
+  "prohibited_event_fields": ["full_name", "phone_number", "identity_number", "diagnosis", "clinical_result", "dicom_content", "access_token", "secret", "password"],
+  "required_event_fields": ["event_id", "event_type", "schema_version", "tenant_id", "occurred_at", "correlation_id"],
+  "policy": {"synthetic_only": true, "private_database_publicly_exposed": false, "tenant_id_server_derived": true, "raw_clinical_data_in_public_cloud": false}
+}

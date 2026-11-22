@@ -1,0 +1,68 @@
+@layer reset, astryx-base, astryx-theme, app;
+
+@layer app {
+  html,
+  body {
+    overflow-x: clip;
+    color-scheme: light dark;
+    scrollbar-color: var(--color-border-emphasized) transparent;
+  }
+
+  body {
+    background: var(--color-background-body);
+    color: var(--color-text-primary);
+  }
+
+  ::selection {
+    background: var(--color-accent-muted);
+    color: var(--color-text-primary);
+  }
+
+  :where(input, textarea) {
+    caret-color: var(--color-accent);
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 0.125rem solid var(--focus-outline-color);
+    outline-offset: var(--spacing-0-5);
+  }
+
+  [data-portal-frame] {
+    inline-size: min(calc(100% - var(--spacing-8)), 76rem);
+    margin-inline: auto;
+    padding-block: var(--spacing-6);
+  }
+
+  [data-portal-form-measure] {
+    max-inline-size: 40rem;
+  }
+
+  [data-table-scroll-region] {
+    overflow-x: auto;
+    max-inline-size: 100%;
+    container-type: inline-size;
+    border-radius: var(--radius-container);
+  }
+
+  [data-tabular-cell] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (pointer: coarse) {
+    [data-portal-frame] button,
+    [data-portal-frame] a {
+      min-block-size: var(--size-element-lg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

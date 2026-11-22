@@ -1,0 +1,37 @@
+# Immutable multi-stage container build for MediCloud Clinical API & Event Relay (T12)
+FROM node:22.15.0-alpine3.21@sha256:ad1aedbcc1b0575074a91ac146d6956476c1f9985994810e4ee02efd932a68fd AS deps
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+FROM node:22.15.0-alpine3.21@sha256:ad1aedbcc1b0575074a91ac146d6956476c1f9985994810e4ee02efd932a68fd AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json pnpm-lock.yaml tsconfig.json ./
+COPY packages/contracts ./packages/contracts
+COPY apps/clinical-api ./apps/clinical-api
+COPY apps/event-relay ./apps/event-relay
+RUN pnpm exec prisma generate --schema apps/clinical-api/prisma/schema.prisma
+
+FROM node:22.15.0-alpine3.21@sha256:ad1aedbcc1b0575074a91ac146d6956476c1f9985994810e4ee02efd932a68fd AS runner
+ARG GIT_COMMIT_SHA=unknown
+ARG BUILD_TIMESTAMP=unknown
+LABEL org.opencontainers.image.title="medicloud-clinical-api" \
+      org.opencontainers.image.description="MediCloud Private Clinical API & Outbox Relay (synthetic P0 scope)" \
+      org.opencontainers.image.revision="${GIT_COMMIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_TIMESTAMP}" \
+      org.opencontainers.image.source="https://medicloud.example/repo"
+WORKDIR /app
+ENV NODE_ENV=production
+# PORT=4000 / EXPOSE 4000 reserved for T10 OpenStack HTTP server bootstrap; T12 smoke runs direct Node contract validation offline without Corepack/pnpm.
+ENV PORT=4000
+COPY --chown=node:node package.json pnpm-lock.yaml ./
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/packages/contracts ./packages/contracts
+COPY --chown=node:node --from=builder /app/apps/clinical-api ./apps/clinical-api
+COPY --chown=node:node --from=builder /app/apps/event-relay ./apps/event-relay
+USER node
+EXPOSE 4000
+CMD ["node", "packages/contracts/validate.mjs"]

@@ -1,0 +1,59 @@
+{
+  "name": "medicloud-agent-company",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.22.0",
+  "scripts": {
+    "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs",
+    "dev": "next dev apps/patient-portal",
+    "build": "next build apps/patient-portal",
+    "start": "next start apps/patient-portal",
+    "agent-company:validate": "tsx tools/medicloud-agent-company/src/cli.ts validate-config",
+    "agent-company:validate-task": "tsx tools/medicloud-agent-company/src/cli.ts validate-task",
+    "agent-company:validate-gates": "tsx tools/medicloud-agent-company/src/cli.ts validate-gates",
+    "contracts:validate": "node packages/contracts/validate.mjs",
+    "db:validate": "node apps/clinical-api/prisma/validate-schema.mjs",
+    "db:seed": "tsx apps/clinical-api/prisma/seed.ts",
+    "db:verify": "tsx apps/clinical-api/prisma/verify-seed.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint tools/medicloud-agent-company/src apps/patient-portal/app apps/patient-portal/next.config.ts",
+    "ci:lint:all": "eslint .github/scripts apps/clinical-api/src apps/event-relay/src tests tools/medicloud-agent-company/src apps/patient-portal/app apps/patient-portal/next.config.ts",
+    "ci:scan:secrets": "node .github/scripts/secret-and-phi-scan.mjs",
+    "ci:scan:deps": "node .github/scripts/dependency-audit.mjs",
+    "ci:verify-images": "node .github/scripts/verify-immutable-images.mjs",
+    "ci:test": "node --test .github/scripts/t12-policy.test.mjs",
+    "ci:dry-run": "node .github/scripts/ci-dry-run.mjs"
+  },
+  "dependencies": {
+    "@astryxdesign/cli": "^0.7.17",
+    "@astryxdesign/core": "^0.7.17",
+    "@astryxdesign/theme-neutral": "^0.7.17",
+    "@prisma/client": "^6.19.0",
+    "@stylexjs/stylex": "^0.19.2",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "jose": "^6.1.3",
+    "next": "^15.5.29",
+    "picomatch": "^4.0.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@next/eslint-plugin-next": "15.5.29",
+    "@types/node": "^22.15.30",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.28.0",
+    "prisma": "6.19.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.34.1",
+    "vitest": "^3.2.4"
+  }
+}

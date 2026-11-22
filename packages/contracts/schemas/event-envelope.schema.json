@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medicloud.example/schemas/event-envelope.v1.json",
+  "title": "MediCloud approved event envelope v1",
+  "oneOf": [{"$ref":"#/$defs/AppointmentCreated"},{"$ref":"#/$defs/AppointmentCancelled"},{"$ref":"#/$defs/EncounterCompleted"},{"$ref":"#/$defs/ReportReady"},{"$ref":"#/$defs/NotificationRequested"},{"$ref":"#/$defs/AnalyticsDailySummary"}],
+  "$defs": {
+    "base": {"type":"object","required":["event_id","event_type","schema_version","tenant_id","occurred_at","correlation_id","payload"],"additionalProperties":false,"properties":{"event_id":{"type":"string","format":"uuid"},"event_type":{"type":"string"},"schema_version":{"const":1},"tenant_id":{"type":"string","pattern":"^synthetic-[a-z0-9-]+$"},"occurred_at":{"type":"string","format":"date-time"},"correlation_id":{"type":"string","minLength":1},"payload":{"type":"object"}}},
+    "AppointmentCreated":{"allOf":[{"$ref":"#/$defs/base"},{"properties":{"event_type":{"const":"appointment.created"},"payload":{"$ref":"#/$defs/AppointmentCreatedPayload"}}}]},
+    "AppointmentCancelled":{"allOf":[{"$ref":"#/$defs/base"},{"properties":{"event_type":{"const":"appointment.cancelled"},"payload":{"$ref":"#/$defs/AppointmentCancelledPayload"}}}]},
+    "EncounterCompleted":{"allOf":[{"$ref":"#/$defs/base"},{"properties":{"event_type":{"const":"encounter.completed"},"payload":{"$ref":"#/$defs/EncounterCompletedPayload"}}}]},
+    "ReportReady":{"allOf":[{"$ref":"#/$defs/base"},{"properties":{"event_type":{"const":"report.ready"},"payload":{"$ref":"#/$defs/ReportReadyPayload"}}}]},
+    "NotificationRequested":{"allOf":[{"$ref":"#/$defs/base"},{"properties":{"event_type":{"const":"notification.requested"},"payload":{"$ref":"#/$defs/NotificationRequestedPayload"}}}]},
+    "AnalyticsDailySummary":{"allOf":[{"$ref":"#/$defs/base"},{"properties":{"event_type":{"const":"analytics.daily_summary"},"payload":{"$ref":"#/$defs/AnalyticsDailySummaryPayload"}}}]},
+    "AppointmentCreatedPayload":{"type":"object","required":["appointment_ref","channel"],"additionalProperties":false,"properties":{"appointment_ref":{"type":"string","pattern":"^synthetic-[a-z0-9-]+$"},"channel":{"type":"string","enum":["portal","staff"]}}},
+    "AppointmentCancelledPayload":{"type":"object","required":["appointment_ref","reason_category"],"additionalProperties":false,"properties":{"appointment_ref":{"type":"string","pattern":"^synthetic-[a-z0-9-]+$"},"reason_category":{"type":"string","enum":["patient_request","provider_unavailable","system"]}}},
+    "EncounterCompletedPayload":{"type":"object","required":["encounter_ref","observation_count"],"additionalProperties":false,"properties":{"encounter_ref":{"type":"string","pattern":"^synthetic-[a-z0-9-]+$"},"observation_count":{"type":"integer","minimum":0}}},
+    "ReportReadyPayload":{"type":"object","required":["resource_ref"],"additionalProperties":false,"properties":{"resource_ref":{"type":"string","pattern":"^synthetic-[a-z0-9-]+$"}}},
+    "NotificationRequestedPayload":{"type":"object","required":["template_id","channel_token"],"additionalProperties":false,"properties":{"template_id":{"type":"string","pattern":"^synthetic-template-[a-z0-9-]+$"},"channel_token":{"type":"string","pattern":"^synthetic-channel-[a-z0-9-]+$"}}},
+    "AnalyticsDailySummaryPayload":{"type":"object","required":["period_start","period_end","thresholded_metrics"],"additionalProperties":false,"properties":{"period_start":{"type":"string","format":"date"},"period_end":{"type":"string","format":"date"},"thresholded_metrics":{"type":"object","minProperties":1,"additionalProperties":{"type":"number","minimum":0}}}}
+  }
+}

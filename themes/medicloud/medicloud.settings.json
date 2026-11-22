@@ -1,0 +1,58 @@
+{
+  "name": "medicloud",
+  "like": "neutral",
+  "mode": "both",
+  "settings": [
+    {
+      "thing": "accent",
+      "value": "#0F766E",
+      "source": "dial"
+    },
+    {
+      "thing": "neutral",
+      "value": "#475569",
+      "source": "dial"
+    },
+    {
+      "thing": "success",
+      "value": "#15803D",
+      "source": "dial"
+    },
+    {
+      "thing": "warning",
+      "value": "#B45309",
+      "source": "dial"
+    },
+    {
+      "thing": "danger",
+      "value": "#B91C1C",
+      "source": "dial"
+    },
+    {
+      "thing": "info",
+      "value": "#0369A1",
+      "source": "dial"
+    },
+    {
+      "thing": "corners",
+      "value": "medium",
+      "source": "dial"
+    },
+    {
+      "thing": "background-color",
+      "value": "var(--color-accent-muted)",
+      "source": "property",
+      "on": "top-nav-item",
+      "state": "selected"
+    },
+    {
+      "thing": "background-color",
+      "value": "var(--color-accent-muted)",
+      "source": "property",
+      "on": "side-nav-item",
+      "state": "selected"
+    }
+  ],
+  "lifted": [],
+  "palette": "942ca347492d60e01b7ec799344627aa9f111f469b38052c900c8abbb0d9426b"
+}

@@ -1,0 +1,36 @@
+# Immutable multi-stage container build for MediCloud Patient & Staff Portal (T12)
+FROM node:22.15.0-alpine3.21@sha256:ad1aedbcc1b0575074a91ac146d6956476c1f9985994810e4ee02efd932a68fd AS deps
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+FROM node:22.15.0-alpine3.21@sha256:ad1aedbcc1b0575074a91ac146d6956476c1f9985994810e4ee02efd932a68fd AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json pnpm-lock.yaml tsconfig.json astryx-themes.ts ./
+COPY src ./src
+COPY themes ./themes
+COPY apps/patient-portal ./apps/patient-portal
+RUN pnpm run build
+
+FROM node:22.15.0-alpine3.21@sha256:ad1aedbcc1b0575074a91ac146d6956476c1f9985994810e4ee02efd932a68fd AS runner
+ARG GIT_COMMIT_SHA=unknown
+ARG BUILD_TIMESTAMP=unknown
+LABEL org.opencontainers.image.title="medicloud-patient-portal" \
+      org.opencontainers.image.description="MediCloud Patient and Staff Portal (synthetic P0 scope)" \
+      org.opencontainers.image.revision="${GIT_COMMIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_TIMESTAMP}" \
+      org.opencontainers.image.source="https://medicloud.example/repo"
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+COPY --chown=node:node package.json pnpm-lock.yaml ./
+COPY --chown=node:node --from=deps /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/apps/patient-portal ./apps/patient-portal
+COPY --chown=node:node --from=builder /app/themes ./themes
+COPY --chown=node:node --from=builder /app/src ./src
+USER node
+EXPOSE 3000
+CMD ["node", "node_modules/next/dist/bin/next", "start", "apps/patient-portal", "-p", "3000"]

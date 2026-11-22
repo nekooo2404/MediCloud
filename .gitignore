@@ -1,0 +1,11 @@
+/.superpowers/
+tools/medicloud-agent-company/dist/
+.medicloud/agent-company/runtime/*
+!.medicloud/agent-company/runtime/.gitkeep
+coverage/
+.vitest/
+.next/
+node_modules/
+.env
+.env.*
+!.env.example

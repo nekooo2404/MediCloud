@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0.0",
+  "data_classification": "restricted-clinical-synthetic",
+  "acceptance_criteria": ["AC-05", "AC-06", "AC-08", "AC-11"],
+  "fixtures": {
+    "patient": {
+      "resourceType": "Patient",
+      "id": "00000000-0000-4000-8000-000000000030",
+      "meta": {
+        "profile": ["http://hl7.org/fhir/StructureDefinition/Patient"],
+        "security": [{"system": "urn:medicloud:synthetic:tenant", "code": "synthetic-hospital-a"}],
+        "tag": [{"system": "urn:medicloud:data-class", "code": "restricted-clinical-synthetic"}]
+      },
+      "identifier": [{"system": "urn:medicloud:synthetic:patient-profile", "value": "synthetic-profile-1"}],
+      "active": true
+    },
+    "encounter": {
+      "resourceType": "Encounter",
+      "id": "00000000-0000-4000-8000-000000000401",
+      "meta": {
+        "profile": ["http://hl7.org/fhir/StructureDefinition/Encounter"],
+        "security": [{"system": "urn:medicloud:synthetic:tenant", "code": "synthetic-hospital-a"}],
+        "tag": [{"system": "urn:medicloud:data-class", "code": "restricted-clinical-synthetic"}]
+      },
+      "status": "finished",
+      "class": {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB", "display": "ambulatory"},
+      "subject": {"reference": "Patient/00000000-0000-4000-8000-000000000030"},
+      "participant": [{"individual": {"reference": "Practitioner/00000000-0000-4000-8000-000000000040"}}],
+      "appointment": [{"reference": "Appointment/00000000-0000-4000-8000-000000000301"}],
+      "period": {"start": "2026-11-24T08:00:00.000Z", "end": "2026-11-24T08:30:00.000Z"}
+    },
+    "observation": {
+      "resourceType": "Observation",
+      "id": "00000000-0000-4000-8000-000000000501",
+      "meta": {
+        "profile": ["http://hl7.org/fhir/StructureDefinition/Observation"],
+        "security": [{"system": "urn:medicloud:synthetic:tenant", "code": "synthetic-hospital-a"}],
+        "tag": [{"system": "urn:medicloud:data-class", "code": "restricted-clinical-synthetic"}]
+      },
+      "status": "final",
+      "code": {"coding": [{"system": "urn:medicloud:synthetic:observation-code", "code": "synthetic-vital-temp"}]},
+      "subject": {"reference": "Patient/00000000-0000-4000-8000-000000000030"},
+      "encounter": {"reference": "Encounter/00000000-0000-4000-8000-000000000401"},
+      "effectiveDateTime": "2026-11-24T08:20:00.000Z",
+      "valueQuantity": {"value": 36.8, "unit": "Cel", "system": "urn:medicloud:synthetic:unit", "code": "Cel"}
+    }
+  },
+  "negative_cases": [
+    {"case": "prohibited_phi_name_field", "expected_error": "prohibited_phi_field"},
+    {"case": "prohibited_free_text_note", "expected_error": "prohibited_phi_field"},
+    {"case": "public_cloud_fhir_endpoint", "expected_error": "public_fhir_endpoint_forbidden"},
+    {"case": "cross_tenant_fhir_lookup", "expected_status": 404, "expected_error": "fhir_resource_not_found"}
+  ]
+}

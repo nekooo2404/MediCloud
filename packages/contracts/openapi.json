@@ -1,0 +1,62 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MediCloud Clinical API",
+    "version": "1.0.0",
+    "description": "Approved P0 contract for synthetic MediCloud data."
+  },
+  "servers": [{"url": "https://clinical-api.private.example"}],
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/v1/specialties": {"get": {"security": [], "responses": {"200": {"$ref": "#/components/responses/Specialties"}}}},
+    "/v1/doctors": {"get": {"description": "tenant_id is an optional non-authoritative filter; authorization scope is always derived from the validated session and membership.", "parameters": [{"$ref": "#/components/parameters/TenantId"}], "responses": {"200": {"$ref": "#/components/responses/Doctors"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/v1/slots": {"get": {"parameters": [{"$ref": "#/components/parameters/DoctorId"}, {"$ref": "#/components/parameters/From"}, {"$ref": "#/components/parameters/To"}], "responses": {"200": {"$ref": "#/components/responses/Slots"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/v1/appointments": {"post": {"parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAppointment"}}}}, "responses": {"201": {"$ref": "#/components/responses/Appointment"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}}},
+    "/v1/appointments/{id}": {"get": {"parameters": [{"$ref": "#/components/parameters/ResourceId"}], "responses": {"200": {"$ref": "#/components/responses/Appointment"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/v1/appointments/{id}/check-in": {"post": {"parameters": [{"$ref": "#/components/parameters/ResourceId"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CheckIn"}}}}, "responses": {"200": {"$ref": "#/components/responses/Appointment"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/v1/encounters": {"post": {"requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateEncounter"}}}}, "responses": {"201": {"$ref": "#/components/responses/Encounter"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/v1/encounters/{id}/observations": {"post": {"parameters": [{"$ref": "#/components/parameters/ResourceId"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateObservation"}}}}, "responses": {"201": {"$ref": "#/components/responses/Observation"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/v1/me/records": {"get": {"responses": {"200": {"$ref": "#/components/responses/Records"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/v1/admin/metrics": {"get": {"parameters": [{"$ref": "#/components/parameters/From"}, {"$ref": "#/components/parameters/To"}], "responses": {"200": {"$ref": "#/components/responses/Metrics"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+  },
+  "components": {
+    "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
+    "parameters": {
+      "ResourceId": {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 16, "maxLength": 128}, "description": "Must equal body.idempotency_key; mismatch returns 409."},
+      "TenantId": {"name": "tenant_id", "in": "query", "required": false, "schema": {"type": "string", "pattern": "^synthetic-[a-z0-9-]+$"}, "description": "Optional non-authoritative filter only; server derives authorization tenant from validated membership."},
+      "DoctorId": {"name": "doctor_id", "in": "query", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "From": {"name": "from", "in": "query", "required": false, "schema": {"type": "string", "format": "date-time"}},
+      "To": {"name": "to", "in": "query", "required": false, "schema": {"type": "string", "format": "date-time"}}
+    },
+    "schemas": {
+      "CreateAppointment": {"type": "object", "required": ["slot_id", "idempotency_key"], "additionalProperties": false, "properties": {"slot_id": {"type": "string", "format": "uuid"}, "patient_id": {"type": "string", "format": "uuid"}, "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128}}},
+      "CheckIn": {"type": "object", "required": ["check_in_channel"], "additionalProperties": false, "properties": {"check_in_channel": {"type": "string", "enum": ["desk", "portal"]}}},
+      "CreateEncounter": {"type": "object", "required": ["appointment_id", "practitioner_id"], "additionalProperties": false, "properties": {"appointment_id": {"type": "string", "format": "uuid"}, "practitioner_id": {"type": "string", "format": "uuid"}}},
+      "CreateObservation": {"type": "object", "required": ["code", "value", "unit", "measured_at"], "additionalProperties": false, "properties": {"code": {"type": "string", "minLength": 1}, "value": {"type": "number"}, "unit": {"type": "string", "minLength": 1}, "measured_at": {"type": "string", "format": "date-time"}}},
+      "Error": {"type": "object", "required": ["error"], "properties": {"error": {"type": "object", "required": ["code", "message", "correlation_id"], "additionalProperties": false, "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "correlation_id": {"type": "string"}, "details": {"type": "object"}}}}},
+      "Appointment": {"type": "object", "required": ["id", "tenant_id", "slot_id", "status", "check_in_status", "correlation_id"], "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "tenant_id": {"type": "string"}, "slot_id": {"type": "string", "format": "uuid"}, "status": {"type": "string", "enum": ["pending", "confirmed", "cancelled", "completed"]}, "check_in_status": {"type": "string", "enum": ["not_checked_in", "checked_in", "voided"]}, "checked_in_at": {"type": ["string", "null"], "format": "date-time"}, "correlation_id": {"type": "string"}}},
+      "Encounter": {"type":"object","required":["id","appointment_id","practitioner_id","status","correlation_id"],"additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"appointment_id":{"type":"string","format":"uuid"},"practitioner_id":{"type":"string","format":"uuid"},"status":{"type":"string","enum":["open","completed"]},"correlation_id":{"type":"string"}}},
+      "Observation": {"type":"object","required":["id","encounter_id","code","value","unit","correlation_id"],"additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"encounter_id":{"type":"string","format":"uuid"},"code":{"type":"string"},"value":{"type":"number"},"unit":{"type":"string"},"correlation_id":{"type":"string"}}},
+      "SpecialtyList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["id","name"],"additionalProperties":false,"properties":{"id":{"type":"string"},"name":{"type":"string"}}}}}},
+      "DoctorList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["id","display_name","specialty"],"additionalProperties":false,"properties":{"id":{"type":"string"},"display_name":{"type":"string"},"specialty":{"type":"string"}}}}}},
+      "SlotList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["id","starts_at","capacity","remaining"],"additionalProperties":false,"properties":{"id":{"type":"string"},"starts_at":{"type":"string","format":"date-time"},"capacity":{"type":"integer","minimum":1},"remaining":{"type":"integer","minimum":0}}}}}},
+      "RecordList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["resource_ref","kind"],"additionalProperties":false,"properties":{"resource_ref":{"type":"string"},"kind":{"type":"string","enum":["encounter","observation","report"]}}}}}},
+      "Metrics": {"type":"object","required":["data","correlation_id"],"additionalProperties":false,"properties":{"data":{"type":"object","additionalProperties":{"type":"number"}},"correlation_id":{"type":"string"}}}
+    },
+    "responses": {
+      "Unauthorized": {"description": "Invalid or missing token", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Forbidden": {"description": "Authenticated but not authorized", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Conflict": {"description": "Idempotency or state conflict", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "NotFound": {"description": "Resource not found or intentionally undisclosed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Appointment": {"description": "Appointment", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Appointment"}}}},
+      "Encounter": {"description": "Synthetic encounter", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Encounter"}}}},
+      "Observation": {"description": "Synthetic observation", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Observation"}}}},
+      "Specialties": {"description": "Specialties", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SpecialtyList"}}}},
+      "Doctors": {"description": "Doctor summaries", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DoctorList"}}}},
+      "Slots": {"description": "Available slots", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlotList"}}}},
+      "Records": {"description": "Released record summaries", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RecordList"}}}},
+      "Metrics": {"description": "Aggregated metrics", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Metrics"}}}}
+    }
+  }
+}

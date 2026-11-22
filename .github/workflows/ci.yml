@@ -1,0 +1,122 @@
+name: MediCloud CI Quality, Security & Immutable Image Gate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality Gate (Contracts, Typecheck, Lint, Tests & Portal Build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate shared contracts (T02)
+        run: pnpm run contracts:validate
+      - name: TypeScript typecheck
+        run: pnpm run typecheck
+      - name: ESLint repository checks
+        run: pnpm run lint && pnpm run ci:lint:all
+      - name: Run Vitest unit and HTTP contract suites
+        run: pnpm test
+      - name: Build Patient & Staff Portal
+        run: pnpm run build
+      - name: Run Astryx built doctor check
+        run: pnpm run astryx -- doctor --built apps/patient-portal
+
+  security-scan:
+    name: Security Gate (Secret/PHI Scan, Supply-Chain Audit & Immutable Image Policy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run secret & synthetic-only PHI scanner
+        run: pnpm run ci:scan:secrets
+      - name: Run lockfile integrity & supply-chain dependency audit
+        run: pnpm run ci:scan:deps
+      - name: Run npm advisory audit (high/critical)
+        run: pnpm audit --audit-level=high
+      - name: Verify immutable Dockerfiles & CI workflow policy
+        run: pnpm run ci:verify-images
+      - name: Run CI scanner and policy negative-fixture tests
+        run: pnpm run ci:test
+
+  immutable-image-build:
+    name: Immutable Image Build (No Registry Push / No Cloud Deploy)
+    needs:
+      - quality
+      - security-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Re-verify immutable image policy before build
+        run: pnpm run ci:verify-images
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Patient & Staff Portal immutable image (SHA-tagged, push disabled)
+        id: portal_build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .github/docker/Dockerfile.patient-portal
+          push: false
+          load: false
+          tags: medicloud/patient-portal:sha-${{ github.sha }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            BUILD_TIMESTAMP=${{ github.event.head_commit.timestamp || 'synthetic-ci' }}
+      - name: Build Clinical API immutable image (SHA-tagged, push disabled)
+        id: clinical_build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .github/docker/Dockerfile.clinical-api
+          push: false
+          load: false
+          tags: medicloud/clinical-api:sha-${{ github.sha }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            BUILD_TIMESTAMP=${{ github.event.head_commit.timestamp || 'synthetic-ci' }}
+      - name: Record immutable build digests (metadata only)
+        run: |
+          echo "portal_digest=${{ steps.portal_build.outputs.digest }}"
+          echo "clinical_digest=${{ steps.clinical_build.outputs.digest }}"
