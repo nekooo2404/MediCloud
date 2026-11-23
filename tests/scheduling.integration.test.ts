@@ -35,8 +35,15 @@ describeDatabase('T05 PostgreSQL scheduling integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$executeRawUnsafe('DROP SCHEMA public CASCADE');
-    await prisma.$executeRawUnsafe('CREATE SCHEMA public');
+    if (tenantId) {
+      await prisma.appointment.deleteMany({where: {tenantId}});
+      await prisma.appointmentSlot.deleteMany({where: {tenantId}});
+      await prisma.schedule.deleteMany({where: {tenantId}});
+      await prisma.practitioner.deleteMany({where: {tenantId}});
+      await prisma.patient.deleteMany({where: {tenantId}});
+      await prisma.membership.deleteMany({where: {tenantId}});
+      await prisma.outboxEvent.deleteMany({where: {tenantId}});
+    }
     await prisma.$disconnect();
   });
 

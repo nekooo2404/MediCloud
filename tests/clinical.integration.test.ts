@@ -152,21 +152,12 @@ describeDatabase('T09 PostgreSQL clinical, audit, outbox & private FHIR integrat
       await prisma.observation.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.encounter.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.outboxEvent.deleteMany({where: {tenantId: {in: tenantIds}}});
-      await prisma.auditEvent.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.appointment.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.appointmentSlot.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.schedule.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.practitioner.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.patient.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.membership.deleteMany({where: {tenantId: {in: tenantIds}}});
-      await prisma.user.deleteMany({
-        where: {
-          subject: {
-            in: [patientSubject, physicianASubject, physicianOtherSubject, auditorSubject, docBSubject].filter(Boolean),
-          },
-        },
-      });
-      await prisma.tenant.deleteMany({where: {id: {in: tenantIds}}});
     }
     if (fhirServer) {
       await new Promise<void>((resolve) => fhirServer.close(() => resolve()));
