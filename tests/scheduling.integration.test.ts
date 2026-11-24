@@ -30,12 +30,13 @@ describeDatabase('T05 PostgreSQL scheduling integration', () => {
     const practitioner = await prisma.practitioner.create({data: {tenantId, userId: user.id, specialty: 'synthetic-t05'}});
     const schedule = await prisma.schedule.create({data: {tenantId, practitionerId: practitioner.id, startsAt: new Date('2026-12-01T08:00:00Z'), endsAt: new Date('2026-12-01T09:00:00Z')}});
     scheduleId = schedule.id;
-    const slot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: schedule.startsAt, capacity: 3}});
+    const slot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: schedule.startsAt, endsAt: schedule.endsAt, capacity: 3}});
     slotId = slot.id;
   });
 
   afterAll(async () => {
     if (tenantId) {
+      await prisma.queueTicket.deleteMany({where: {tenantId}});
       await prisma.appointment.deleteMany({where: {tenantId}});
       await prisma.appointmentSlot.deleteMany({where: {tenantId}});
       await prisma.schedule.deleteMany({where: {tenantId}});
@@ -74,11 +75,10 @@ describeDatabase('T05 PostgreSQL scheduling integration', () => {
     const replay = await createAppointment(patientDeps, request, {slotId, idempotencyKey: request.idempotencyHeader});
     expect(replay).toEqual(first);
     await prisma.membership.deleteMany({where: {userId: patientUser.id}});
-    await prisma.user.delete({where: {id: patientUser.id}});
   });
 
   it('does not exceed capacity under concurrent booking', async () => {
-    const concurrentSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T10:00:00Z'), capacity: 3}});
+    const concurrentSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T10:00:00Z'), endsAt: new Date('2026-12-01T11:00:00Z'), capacity: 3}});
     const attempts = await Promise.allSettled(Array.from({length: 8}, (_, index) => {
       const request = context();
       return createAppointment(deps, {...request, serverChannel: 'portal'}, {slotId: concurrentSlot.id, patientId: patientIds[index], idempotencyKey: request.idempotencyHeader});
@@ -109,7 +109,7 @@ describeDatabase('T05 PostgreSQL scheduling integration', () => {
 
   it('rolls back appointment when outbox validation fails', async () => {
     const request = context();
-    const failingSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T13:00:00Z'), capacity: 1}});
+    const failingSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T13:00:00Z'), endsAt: new Date('2026-12-01T14:00:00Z'), capacity: 1}});
     const failingDeps = {...deps, validateOutboxEvent: () => {throw new Error('synthetic outbox validation failure');}};
     await expect(createAppointment(failingDeps, {...request, serverChannel: 'portal'}, {slotId: failingSlot.id, patientId: patientIds[6], idempotencyKey: request.idempotencyHeader})).rejects.toThrow('synthetic outbox validation failure');
     expect(await prisma.appointment.count({where: {tenantId, idempotencyKey: request.idempotencyHeader}})).toBe(0);
@@ -118,7 +118,7 @@ describeDatabase('T05 PostgreSQL scheduling integration', () => {
 
   it('persists check-in and makes a repeated check-in idempotent', async () => {
     const request = context();
-    const checkInSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T11:00:00Z'), capacity: 1}});
+    const checkInSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T11:00:00Z'), endsAt: new Date('2026-12-01T12:00:00Z'), capacity: 1}});
     const created = await createAppointment(deps, {...request, serverChannel: 'portal'}, {slotId: checkInSlot.id, patientId: patientIds[4], idempotencyKey: request.idempotencyHeader});
     const checkedIn = await checkInAppointment(deps, request, created.id, 'desk');
     const repeated = await checkInAppointment(deps, request, created.id, 'desk');
@@ -130,7 +130,7 @@ describeDatabase('T05 PostgreSQL scheduling integration', () => {
 
   it('rejects check-in for a cancelled appointment', async () => {
     const request = context();
-    const cancelledSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T12:00:00Z'), capacity: 1}});
+    const cancelledSlot = await prisma.appointmentSlot.create({data: {tenantId, scheduleId, startsAt: new Date('2026-12-01T12:00:00Z'), endsAt: new Date('2026-12-01T13:00:00Z'), capacity: 1}});
     const created = await createAppointment(deps, {...request, serverChannel: 'portal'}, {slotId: cancelledSlot.id, patientId: patientIds[5], idempotencyKey: request.idempotencyHeader});
     await prisma.appointment.update({where: {id: created.id}, data: {status: 'CANCELLED'}});
     await expect(checkInAppointment(deps, request, created.id, 'desk')).rejects.toMatchObject({status: 403});

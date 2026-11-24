@@ -129,9 +129,12 @@ function createTestHarness() {
     appointmentId: string;
     patientId: string;
     practitionerId: string;
-    status: 'OPEN' | 'COMPLETED';
+    status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'AMENDED' | 'CANCELLED';
+    version: number;
+    startedAt?: Date | null;
     createdAt: Date;
     completedAt: Date | null;
+    completedByUserId?: string | null;
   }>([
     [
       ENCOUNTER_NURSE_OPEN_ID,
@@ -142,6 +145,8 @@ function createTestHarness() {
         patientId: PATIENT_A_ID,
         practitionerId: DOC_NURSE_A_ID,
         status: 'OPEN',
+        version: 1,
+        startedAt: null,
         createdAt: new Date('2026-11-24T07:10:00Z'),
         completedAt: null,
       },
@@ -155,12 +160,14 @@ function createTestHarness() {
         patientId: PATIENT_B_ID,
         practitionerId: DOC_B1_ID,
         status: 'OPEN',
+        version: 1,
+        startedAt: null,
         createdAt: new Date('2026-11-24T07:10:00Z'),
         completedAt: null,
       },
     ],
   ]);
-  const observations: Array<{id: string; tenantId: string; encounterId: string; code: string; value: number; unit: string; measuredAt: Date}> = [];
+  const observations: Array<{id: string; tenantId: string; encounterId: string; code: string; value: number; unit: string; status: 'DRAFT' | 'PRELIMINARY' | 'FINAL' | 'AMENDED'; version: number; isLatest: boolean; measuredAt: Date}> = [];
   const auditEvents: Array<{id: string; tenantId: string; actorId: string | null; action: string; resourceRef: string; purpose: string; correlationId: string; metadata: unknown; occurredAt: Date}> = [];
   const outboxEvents: Array<{eventId: string; tenantId: string; eventType: string; schemaVersion: number; correlationId: string; payload: unknown; status: string; createdAt: Date}> = [];
   const fhirResources = new Map<string, FhirR4Resource>();
@@ -199,12 +206,19 @@ function createTestHarness() {
     },
     appointment: {
       findUnique: async ({where}: {where: {id: string}}) => appointments.get(where.id) ?? null,
+      updateMany: async ({where, data}: {where: {tenantId: string; id: string; status?: {in: string[]}}; data: {status: string}}) => {
+        const appt = appointments.get(where.id);
+        if (!appt || appt.tenantId !== where.tenantId) return {count: 0};
+        if (where.status?.in && !where.status.in.includes(appt.status)) return {count: 0};
+        appt.status = data.status;
+        return {count: 1};
+      },
       count: async ({where}: {where: {tenantId: string}}) =>
         [...appointments.values()].filter((appt) => appt.tenantId === where.tenantId).length,
     },
     encounter: {
-      create: async ({data}: {data: {id: string; tenantId: string; appointmentId: string; patientId: string; practitionerId: string; status: 'OPEN' | 'COMPLETED'; createdAt: Date}}) => {
-        const record = {...data, completedAt: null};
+      create: async ({data}: {data: {id: string; tenantId: string; appointmentId: string; patientId: string; practitionerId: string; status: 'OPEN'; startedAt?: Date; createdAt: Date}}) => {
+        const record = {...data, version: 1, completedAt: null};
         encounters.set(record.id, record);
         return record;
       },
@@ -215,18 +229,24 @@ function createTestHarness() {
         const tenant = tenants.get(enc.tenantId)!;
         return {...enc, tenant: {code: tenant.code}, practitioner: {user: {subject: prac.user.subject}}};
       },
-      update: async ({where, data}: {where: {id: string}; data: {status: 'OPEN' | 'COMPLETED'; completedAt: Date}}) => {
+      update: async ({where, data}: {where: {id: string}; data: Partial<{status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED'; completedAt: Date}>}) => {
         const enc = encounters.get(where.id)!;
         const updated = {...enc, ...data};
         encounters.set(where.id, updated);
         return updated;
       },
-      updateMany: async ({where, data}: {where: {id: string; tenantId: string; status: 'OPEN' | 'COMPLETED'}; data: {status: 'OPEN' | 'COMPLETED'; completedAt: Date}}) => {
+      updateMany: async ({where, data}: {where: {id: string; tenantId: string; status: string | {in: string[]}; version?: number}; data: Record<string, unknown>}) => {
         const enc = encounters.get(where.id);
-        if (!enc || enc.tenantId !== where.tenantId || enc.status !== where.status) {
+        if (!enc || enc.tenantId !== where.tenantId) return {count: 0};
+        if (typeof where.status === 'string' ? enc.status !== where.status : !where.status.in.includes(enc.status)) {
           return {count: 0};
         }
-        encounters.set(where.id, {...enc, ...data});
+        if (where.version !== undefined && enc.version !== where.version) return {count: 0};
+        const nextVersion =
+          data.version && typeof data.version === 'object' && 'increment' in (data.version as Record<string, number>)
+            ? enc.version + Number((data.version as Record<string, number>).increment)
+            : enc.version;
+        encounters.set(where.id, {...enc, ...data, version: nextVersion} as typeof enc);
         return {count: 1};
       },
       findMany: async ({where}: {where: {tenantId: string; patientId: string}}) =>
@@ -235,14 +255,45 @@ function createTestHarness() {
         [...encounters.values()].filter((enc) => enc.tenantId === where.tenantId).length,
     },
     observation: {
-      create: async ({data}: {data: {id: string; tenantId: string; encounterId: string; code: string; value: number; unit: string; measuredAt: Date}}) => {
-        observations.push(data);
-        return data;
+      create: async ({data}: {data: {id: string; tenantId: string; encounterId: string; code: string; value: number; unit: string; status?: 'DRAFT' | 'PRELIMINARY' | 'FINAL' | 'AMENDED'; version?: number; isLatest?: boolean; measuredAt: Date}}) => {
+        const saved = {
+          status: 'PRELIMINARY' as const,
+          version: 1,
+          isLatest: true,
+          ...data,
+        };
+        observations.push(saved);
+        return saved;
       },
-      count: async ({where}: {where: {tenantId: string; encounterId?: string}}) =>
-        observations.filter((obs) => obs.tenantId === where.tenantId && (!where.encounterId || obs.encounterId === where.encounterId)).length,
-      findMany: async ({where}: {where: {tenantId: string; encounter: {patientId: string}}}) =>
-        observations.filter((obs) => obs.tenantId === where.tenantId && encounters.get(obs.encounterId)?.patientId === where.encounter.patientId),
+      updateMany: async ({where, data}: {where: {tenantId: string; encounterId: string; isLatest?: boolean; status?: string}; data: {status?: 'FINAL'}}) => {
+        let count = 0;
+        for (const obs of observations) {
+          if (
+            obs.tenantId === where.tenantId &&
+            obs.encounterId === where.encounterId &&
+            (where.isLatest === undefined || obs.isLatest === where.isLatest) &&
+            (where.status === undefined || obs.status === where.status)
+          ) {
+            if (data.status) obs.status = data.status;
+            count += 1;
+          }
+        }
+        return {count};
+      },
+      count: async ({where}: {where: {tenantId: string; encounterId?: string; isLatest?: boolean}}) =>
+        observations.filter(
+          (obs) =>
+            obs.tenantId === where.tenantId &&
+            (!where.encounterId || obs.encounterId === where.encounterId) &&
+            (where.isLatest === undefined || obs.isLatest === where.isLatest),
+        ).length,
+      findMany: async ({where}: {where: {tenantId: string; encounter: {patientId: string}; isLatest?: boolean}}) =>
+        observations.filter(
+          (obs) =>
+            obs.tenantId === where.tenantId &&
+            (where.isLatest === undefined || obs.isLatest === where.isLatest) &&
+            encounters.get(obs.encounterId)?.patientId === where.encounter.patientId,
+        ),
     },
     auditEvent: {
       create: async ({data}: {data: Omit<(typeof auditEvents)[number], 'id' | 'occurredAt'>}) => {
@@ -540,8 +591,8 @@ describe('T09 Clinical, Audit, FHIR & T08-Followup HTTP contracts', () => {
     });
     expect(nurseAllowed.status).toBe(201);
 
-    // [BLOCKING-1] Concurrent observation creation against one OPEN encounter allows only one completion & one outbox event.
-    const [concurrentA, concurrentB] = await Promise.all([
+    // CL-A: Recording observations transitions OPEN -> IN_PROGRESS without auto-completing encounter.
+    const [obsA, obsB] = await Promise.all([
       send(server, 'POST', `/v1/encounters/${encounterId}/observations`, {
         tokenKey: 'physician_a',
         headers: {'x-purpose-of-use': 'treatment'},
@@ -553,13 +604,32 @@ describe('T09 Clinical, Audit, FHIR & T08-Followup HTTP contracts', () => {
         body: {code: 'synthetic-hr', value: 74, unit: 'bpm', measured_at: '2026-11-24T08:15:05Z'},
       }),
     ]);
-    const succeededObs = [concurrentA, concurrentB].find((res) => res.status === 201)!;
-    const rejectedObs = [concurrentA, concurrentB].find((res) => res.status === 403)!;
-    expect(succeededObs).toBeDefined();
-    expect(rejectedObs).toBeDefined();
-    expect(rejectedObs.body.error).toMatchObject({code: 'resource_state_denied'});
-    expect(ajv.validate('#/components/schemas/Observation', succeededObs.body)).toBe(true);
-    const observationId = String(succeededObs.body.id);
+    expect(obsA.status).toBe(201);
+    expect(obsB.status).toBe(201);
+    expect(ajv.validate('#/components/schemas/Observation', obsA.body)).toBe(true);
+    const observationId = String(obsA.body.id);
+    expect(harness.outboxEvents).toHaveLength(0);
+
+    // Concurrent explicit completion allows only ONE transition & ONE outbox event.
+    const [compA, compB] = await Promise.all([
+      send(server, 'POST', `/v1/encounters/${encounterId}/complete`, {
+        tokenKey: 'physician_a',
+        headers: {'x-purpose-of-use': 'treatment'},
+        body: {},
+      }),
+      send(server, 'POST', `/v1/encounters/${encounterId}/complete`, {
+        tokenKey: 'physician_a',
+        headers: {'x-purpose-of-use': 'treatment'},
+        body: {},
+      }),
+    ]);
+    const wonComplete = [compA, compB].find((res) => res.status === 200)!;
+    const lostComplete = [compA, compB].find((res) => res.status === 403 || res.status === 409)!;
+    expect(wonComplete).toBeDefined();
+    expect(lostComplete).toBeDefined();
+    expect(['encounter_already_completed_or_stale', 'resource_state_denied']).toContain(
+      (lostComplete.body.error as {code: string}).code,
+    );
 
     // Outbox envelope strictly carries approved encounter.completed metadata only (AC-08).
     const physicianOutbox = harness.outboxEvents.filter(
@@ -568,7 +638,7 @@ describe('T09 Clinical, Audit, FHIR & T08-Followup HTTP contracts', () => {
     expect(physicianOutbox).toHaveLength(1);
     const outbox = physicianOutbox[0];
     expect(outbox.eventType).toBe('encounter.completed');
-    expect(outbox.payload).toEqual({encounter_ref: `synthetic-encounter-${encounterId}`, observation_count: 1});
+    expect(outbox.payload).toEqual({encounter_ref: `synthetic-encounter-${encounterId}`, observation_count: 2});
     expect(() =>
       validateEventEnvelope({
         event_id: outbox.eventId,
@@ -617,7 +687,7 @@ describe('T09 Clinical, Audit, FHIR & T08-Followup HTTP contracts', () => {
     const auditorMetrics = await send(server, 'GET', '/v1/admin/metrics', {tokenKey: 'auditor_a'});
     expect(auditorMetrics.status).toBe(200);
     expect(ajv.validate('#/components/schemas/Metrics', auditorMetrics.body)).toBe(true);
-    expect(auditorMetrics.body.data).toMatchObject({appointments_total: 2, encounters_total: 2, observations_total: 2, outbox_pending_total: 2});
+    expect(auditorMetrics.body.data).toMatchObject({appointments_total: 2, encounters_total: 2, observations_total: 3, outbox_pending_total: 1});
 
     const patientMetrics = await send(server, 'GET', '/v1/admin/metrics', {tokenKey: 'patient_a'});
     expect(patientMetrics.status).toBe(403);

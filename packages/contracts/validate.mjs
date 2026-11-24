@@ -11,11 +11,29 @@ const eventSchema = await readJson('./schemas/event-envelope.schema.json');
 const classification = await readJson('./data-classification.json');
 
 assert.equal(openapi.openapi, '3.1.0');
+assert.equal(openapi.info.version, '1.1.0');
 assert.deepEqual(Object.keys(openapi.paths).sort(), [
-  '/v1/admin/metrics', '/v1/appointments', '/v1/appointments/{id}',
-  '/v1/appointments/{id}/check-in', '/v1/doctors', '/v1/encounters',
-  '/v1/encounters/{id}/observations', '/v1/me/records', '/v1/slots',
+  '/v1/admin/metrics',
+  '/v1/appointments',
+  '/v1/appointments/{id}',
+  '/v1/appointments/{id}/cancel',
+  '/v1/appointments/{id}/check-in',
+  '/v1/appointments/{id}/no-show',
+  '/v1/appointments/{id}/reschedule',
+  '/v1/dashboard',
+  '/v1/doctors',
+  '/v1/encounters',
+  '/v1/encounters/{id}/cancel',
+  '/v1/encounters/{id}/complete',
+  '/v1/encounters/{id}/observations',
+  '/v1/encounters/{id}/observations/{observationId}/amend',
+  '/v1/health',
+  '/v1/me/records',
+  '/v1/queue/{ticketId}/transition',
+  '/v1/schedules/publish',
+  '/v1/slots',
   '/v1/specialties',
+  '/v1/workspace/{resource}',
 ]);
 assert.deepEqual(classification.policy, {
   synthetic_only: true,
@@ -38,7 +56,7 @@ for (const [path, item] of Object.entries(openapi.paths)) {
     assert.ok(operation.responses['404'], `${method.toUpperCase()} ${path} must declare disclosure-safe 404`);
   }
 }
-for (const responseName of ['Encounter', 'Observation', 'Specialties', 'Doctors', 'Slots', 'Records', 'Metrics']) {
+for (const responseName of ['Encounter', 'Observation', 'Specialties', 'Doctors', 'Slots', 'Records', 'Metrics', 'WorkspaceSlice', 'DashboardView']) {
   assert.notEqual(openapi.components.responses[responseName].content['application/json'].schema.$ref, '#/components/schemas/SimpleData');
 }
 
@@ -64,4 +82,10 @@ for (const field of classification.prohibited_event_fields) {
   assert.equal(validateEvent({...validEvent, payload: {appointment_ref: 'synthetic-appointment-001', channel: 'portal', [field]: 'forbidden'}}), false);
 }
 
-console.log('T02 contract validation passed: OpenAPI, event schema, policy and rejection fixtures.');
+// Verify all component schemas compile cleanly under AJV Draft 2020-12
+for (const [schemaName, schema] of Object.entries(openapi.components.schemas)) {
+  if (schemaName === 'Error') continue;
+  ajv.compile(schema);
+}
+
+console.log('T02 contract validation passed: OpenAPI 1.1.0, AJV component schemas, event schema, policy and rejection fixtures.');

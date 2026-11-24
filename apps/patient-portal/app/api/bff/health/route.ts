@@ -1,11 +1,18 @@
-import { NextResponse } from 'next/server';
+import {NextResponse} from 'next/server';
+import {
+  assertClinicalApiConfigured,
+  getUpstreamCircuitMetrics,
+} from '../../../_lib/clinical-api-client';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const backendBase = process.env.CLINICAL_API_BASE_URL || 'http://127.0.0.1:4000';
+  const portalRole = process.env.NEXT_PUBLIC_PORTAL_ROLE === 'staff' ? 'staff' : 'patient';
+  const circuitBreaker = getUpstreamCircuitMetrics();
+
   try {
-    const res = await fetch(new URL('/v1/health', backendBase), {
+    const {baseUrl} = assertClinicalApiConfigured(portalRole);
+    const res = await fetch(new URL('/v1/health', baseUrl), {
       cache: 'no-store',
       signal: AbortSignal.timeout(3000),
     });
@@ -13,21 +20,23 @@ export async function GET() {
     return NextResponse.json(
       {
         status: res.ok ? 'ok' : 'degraded',
-        portalRole: process.env.NEXT_PUBLIC_PORTAL_ROLE || 'patient',
+        portalRole,
+        circuitBreaker,
         upstream,
         timestamp: new Date().toISOString(),
       },
-      { status: res.ok ? 200 : 503 },
+      {status: res.ok ? 200 : 503},
     );
   } catch {
     return NextResponse.json(
       {
         status: 'degraded',
-        portalRole: process.env.NEXT_PUBLIC_PORTAL_ROLE || 'patient',
-        upstream: { status: 'unreachable' },
+        portalRole,
+        circuitBreaker,
+        upstream: {status: 'unreachable'},
         timestamp: new Date().toISOString(),
       },
-      { status: 503 },
+      {status: 503},
     );
   }
 }

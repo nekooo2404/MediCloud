@@ -2,27 +2,326 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MediCloud Clinical API",
-    "version": "1.0.0",
-    "description": "Approved P0 contract for synthetic MediCloud data."
+    "version": "1.1.0",
+    "description": "Approved P0/Enterprise contract for synthetic MediCloud data."
   },
   "servers": [{"url": "https://clinical-api.private.example"}],
   "security": [{"bearerAuth": []}],
   "paths": {
-    "/v1/specialties": {"get": {"security": [], "responses": {"200": {"$ref": "#/components/responses/Specialties"}}}},
-    "/v1/doctors": {"get": {"description": "tenant_id is an optional non-authoritative filter; authorization scope is always derived from the validated session and membership.", "parameters": [{"$ref": "#/components/parameters/TenantId"}], "responses": {"200": {"$ref": "#/components/responses/Doctors"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
-    "/v1/slots": {"get": {"parameters": [{"$ref": "#/components/parameters/DoctorId"}, {"$ref": "#/components/parameters/From"}, {"$ref": "#/components/parameters/To"}], "responses": {"200": {"$ref": "#/components/responses/Slots"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
-    "/v1/appointments": {"post": {"parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAppointment"}}}}, "responses": {"201": {"$ref": "#/components/responses/Appointment"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}}},
-    "/v1/appointments/{id}": {"get": {"parameters": [{"$ref": "#/components/parameters/ResourceId"}], "responses": {"200": {"$ref": "#/components/responses/Appointment"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
-    "/v1/appointments/{id}/check-in": {"post": {"parameters": [{"$ref": "#/components/parameters/ResourceId"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CheckIn"}}}}, "responses": {"200": {"$ref": "#/components/responses/Appointment"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
-    "/v1/encounters": {"post": {"requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateEncounter"}}}}, "responses": {"201": {"$ref": "#/components/responses/Encounter"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
-    "/v1/encounters/{id}/observations": {"post": {"parameters": [{"$ref": "#/components/parameters/ResourceId"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateObservation"}}}}, "responses": {"201": {"$ref": "#/components/responses/Observation"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
-    "/v1/me/records": {"get": {"responses": {"200": {"$ref": "#/components/responses/Records"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
-    "/v1/admin/metrics": {"get": {"parameters": [{"$ref": "#/components/parameters/From"}, {"$ref": "#/components/parameters/To"}], "responses": {"200": {"$ref": "#/components/responses/Metrics"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+    "/v1/health": {
+      "get": {
+        "security": [],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Health"}
+        }
+      }
+    },
+    "/v1/specialties": {
+      "get": {
+        "security": [],
+        "responses": {"200": {"$ref": "#/components/responses/Specialties"}}
+      }
+    },
+    "/v1/doctors": {
+      "get": {
+        "description": "tenant_id is an optional non-authoritative filter; authorization scope is always derived from the validated session and membership.",
+        "parameters": [{"$ref": "#/components/parameters/TenantId"}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Doctors"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/slots": {
+      "get": {
+        "parameters": [
+          {"$ref": "#/components/parameters/DoctorId"},
+          {"$ref": "#/components/parameters/From"},
+          {"$ref": "#/components/parameters/To"}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Slots"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/schedules/publish": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishSchedule"}}}
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/PublishedSchedule"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/appointments": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAppointment"}}}
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/Appointment"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/appointments/{id}": {
+      "get": {
+        "parameters": [{"$ref": "#/components/parameters/ResourceId"}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Appointment"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/appointments/{id}/check-in": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/ResourceId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CheckIn"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/Appointment"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/appointments/{id}/cancel": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/ResourceId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CancelAppointment"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/Appointment"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/appointments/{id}/reschedule": {
+      "post": {
+        "parameters": [
+          {"$ref": "#/components/parameters/ResourceId"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RescheduleAppointment"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/Appointment"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/appointments/{id}/no-show": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/ResourceId"}],
+        "requestBody": {
+          "required": false,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MarkNoShow"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/Appointment"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/queue/{ticketId}/transition": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/TicketId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/QueueTransition"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/QueueTicket"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/encounters": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateEncounter"}}}
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/Encounter"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/encounters/{id}/observations": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/ResourceId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateObservation"}}}
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/Observation"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/encounters/{id}/observations/{observationId}/amend": {
+      "post": {
+        "parameters": [
+          {"$ref": "#/components/parameters/ResourceId"},
+          {"$ref": "#/components/parameters/ObservationId"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AmendObservation"}}}
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/Observation"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/encounters/{id}/complete": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/ResourceId"}],
+        "requestBody": {
+          "required": false,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CompleteEncounter"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/EncounterCompletion"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/encounters/{id}/cancel": {
+      "post": {
+        "parameters": [{"$ref": "#/components/parameters/ResourceId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CancelEncounter"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/EncounterCancellation"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/me/records": {
+      "get": {
+        "responses": {
+          "200": {"$ref": "#/components/responses/Records"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/admin/metrics": {
+      "get": {
+        "parameters": [
+          {"$ref": "#/components/parameters/From"},
+          {"$ref": "#/components/parameters/To"}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Metrics"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/workspace/{resource}": {
+      "get": {
+        "parameters": [
+          {"$ref": "#/components/parameters/WorkspaceResource"}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/WorkspaceSlice"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/dashboard": {
+      "get": {
+        "responses": {
+          "200": {"$ref": "#/components/responses/DashboardView"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DashboardMutation"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/DashboardMutationResult"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    }
   },
   "components": {
     "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
     "parameters": {
       "ResourceId": {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "TicketId": {"name": "ticketId", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "ObservationId": {"name": "observationId", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "WorkspaceResource": {"name": "resource", "in": "path", "required": true, "schema": {"type": "string", "enum": ["overview", "appointments", "queue", "records", "vitals", "audit"]}},
       "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 16, "maxLength": 128}, "description": "Must equal body.idempotency_key; mismatch returns 409."},
       "TenantId": {"name": "tenant_id", "in": "query", "required": false, "schema": {"type": "string", "pattern": "^synthetic-[a-z0-9-]+$"}, "description": "Optional non-authoritative filter only; server derives authorization tenant from validated membership."},
       "DoctorId": {"name": "doctor_id", "in": "query", "required": true, "schema": {"type": "string", "format": "uuid"}},
@@ -30,33 +329,392 @@
       "To": {"name": "to", "in": "query", "required": false, "schema": {"type": "string", "format": "date-time"}}
     },
     "schemas": {
-      "CreateAppointment": {"type": "object", "required": ["slot_id", "idempotency_key"], "additionalProperties": false, "properties": {"slot_id": {"type": "string", "format": "uuid"}, "patient_id": {"type": "string", "format": "uuid"}, "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128}}},
-      "CheckIn": {"type": "object", "required": ["check_in_channel"], "additionalProperties": false, "properties": {"check_in_channel": {"type": "string", "enum": ["desk", "portal"]}}},
-      "CreateEncounter": {"type": "object", "required": ["appointment_id", "practitioner_id"], "additionalProperties": false, "properties": {"appointment_id": {"type": "string", "format": "uuid"}, "practitioner_id": {"type": "string", "format": "uuid"}}},
-      "CreateObservation": {"type": "object", "required": ["code", "value", "unit", "measured_at"], "additionalProperties": false, "properties": {"code": {"type": "string", "minLength": 1}, "value": {"type": "number"}, "unit": {"type": "string", "minLength": 1}, "measured_at": {"type": "string", "format": "date-time"}}},
-      "Error": {"type": "object", "required": ["error"], "properties": {"error": {"type": "object", "required": ["code", "message", "correlation_id"], "additionalProperties": false, "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "correlation_id": {"type": "string"}, "details": {"type": "object"}}}}},
-      "Appointment": {"type": "object", "required": ["id", "tenant_id", "slot_id", "status", "check_in_status", "correlation_id"], "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "tenant_id": {"type": "string"}, "slot_id": {"type": "string", "format": "uuid"}, "status": {"type": "string", "enum": ["pending", "confirmed", "cancelled", "completed"]}, "check_in_status": {"type": "string", "enum": ["not_checked_in", "checked_in", "voided"]}, "checked_in_at": {"type": ["string", "null"], "format": "date-time"}, "correlation_id": {"type": "string"}}},
-      "Encounter": {"type":"object","required":["id","appointment_id","practitioner_id","status","correlation_id"],"additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"appointment_id":{"type":"string","format":"uuid"},"practitioner_id":{"type":"string","format":"uuid"},"status":{"type":"string","enum":["open","completed"]},"correlation_id":{"type":"string"}}},
-      "Observation": {"type":"object","required":["id","encounter_id","code","value","unit","correlation_id"],"additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"encounter_id":{"type":"string","format":"uuid"},"code":{"type":"string"},"value":{"type":"number"},"unit":{"type":"string"},"correlation_id":{"type":"string"}}},
-      "SpecialtyList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["id","name"],"additionalProperties":false,"properties":{"id":{"type":"string"},"name":{"type":"string"}}}}}},
-      "DoctorList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["id","display_name","specialty"],"additionalProperties":false,"properties":{"id":{"type":"string"},"display_name":{"type":"string"},"specialty":{"type":"string"}}}}}},
-      "SlotList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["id","starts_at","capacity","remaining"],"additionalProperties":false,"properties":{"id":{"type":"string"},"starts_at":{"type":"string","format":"date-time"},"capacity":{"type":"integer","minimum":1},"remaining":{"type":"integer","minimum":0}}}}}},
-      "RecordList": {"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"array","items":{"type":"object","required":["resource_ref","kind"],"additionalProperties":false,"properties":{"resource_ref":{"type":"string"},"kind":{"type":"string","enum":["encounter","observation","report"]}}}}}},
-      "Metrics": {"type":"object","required":["data","correlation_id"],"additionalProperties":false,"properties":{"data":{"type":"object","additionalProperties":{"type":"number"}},"correlation_id":{"type":"string"}}}
+      "CreateAppointment": {
+        "type": "object",
+        "required": ["slot_id", "idempotency_key"],
+        "additionalProperties": false,
+        "properties": {
+          "slot_id": {"type": "string", "format": "uuid"},
+          "patient_id": {"type": "string", "format": "uuid"},
+          "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128},
+          "visit_type": {"type": "string", "maxLength": 40},
+          "visit_reason": {"type": "string", "maxLength": 120},
+          "intake_note": {"type": "string", "maxLength": 600}
+        }
+      },
+      "CancelAppointment": {
+        "type": "object",
+        "required": ["reason"],
+        "additionalProperties": false,
+        "properties": {
+          "reason": {"type": "string", "minLength": 3, "maxLength": 300}
+        }
+      },
+      "RescheduleAppointment": {
+        "type": "object",
+        "required": ["new_slot_id", "idempotency_key"],
+        "additionalProperties": false,
+        "properties": {
+          "new_slot_id": {"type": "string", "format": "uuid"},
+          "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128},
+          "reason": {"type": "string", "maxLength": 300}
+        }
+      },
+      "MarkNoShow": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {"type": "string", "minLength": 3, "maxLength": 300}
+        }
+      },
+      "PublishSchedule": {
+        "type": "object",
+        "required": ["practitioner_id", "starts_at", "ends_at"],
+        "additionalProperties": false,
+        "properties": {
+          "practitioner_id": {"type": "string", "format": "uuid"},
+          "starts_at": {"type": "string", "format": "date-time"},
+          "ends_at": {"type": "string", "format": "date-time"},
+          "slot_duration_minutes": {"type": "integer", "minimum": 15, "maximum": 180},
+          "capacity": {"type": "integer", "minimum": 1, "maximum": 20}
+        }
+      },
+      "QueueTransition": {
+        "type": "object",
+        "required": ["to_status"],
+        "additionalProperties": false,
+        "properties": {
+          "to_status": {"type": "string", "enum": ["WAITING", "CALLED", "IN_SERVICE", "DONE", "SKIPPED"]}
+        }
+      },
+      "CheckIn": {
+        "type": "object",
+        "required": ["check_in_channel"],
+        "additionalProperties": false,
+        "properties": {"check_in_channel": {"type": "string", "enum": ["desk", "portal"]}}
+      },
+      "CreateEncounter": {
+        "type": "object",
+        "required": ["appointment_id", "practitioner_id"],
+        "additionalProperties": false,
+        "properties": {
+          "appointment_id": {"type": "string", "format": "uuid"},
+          "practitioner_id": {"type": "string", "format": "uuid"}
+        }
+      },
+      "CreateObservation": {
+        "type": "object",
+        "required": ["code", "value", "unit", "measured_at"],
+        "additionalProperties": false,
+        "properties": {
+          "code": {"type": "string", "minLength": 1, "maxLength": 64},
+          "value": {"type": "number"},
+          "unit": {"type": "string", "minLength": 1, "maxLength": 32},
+          "measured_at": {"type": "string", "format": "date-time"},
+          "status": {"type": "string", "enum": ["PRELIMINARY", "FINAL"]},
+          "expected_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "AmendObservation": {
+        "type": "object",
+        "required": ["value", "unit", "measured_at", "reason", "expected_version"],
+        "additionalProperties": false,
+        "properties": {
+          "value": {"type": "number"},
+          "unit": {"type": "string", "minLength": 1, "maxLength": 32},
+          "measured_at": {"type": "string", "format": "date-time"},
+          "reason": {"type": "string", "minLength": 3, "maxLength": 300},
+          "expected_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "CompleteEncounter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "CancelEncounter": {
+        "type": "object",
+        "required": ["reason"],
+        "additionalProperties": false,
+        "properties": {
+          "reason": {"type": "string", "minLength": 3, "maxLength": 300},
+          "expected_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "DashboardMutation": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "book_appointment",
+              "cancel_appointment",
+              "reschedule_appointment",
+              "mark_no_show",
+              "check_in",
+              "queue_transition",
+              "publish_schedule",
+              "create_encounter",
+              "record_observation",
+              "amend_observation",
+              "complete_encounter",
+              "cancel_encounter"
+            ]
+          },
+          "tenantCode": {"type": "string"},
+          "slotId": {"type": "string", "format": "uuid"},
+          "patientId": {"type": "string", "format": "uuid"},
+          "appointmentId": {"type": "string", "format": "uuid"},
+          "newSlotId": {"type": "string", "format": "uuid"},
+          "ticketId": {"type": "string", "format": "uuid"},
+          "encounterId": {"type": "string", "format": "uuid"},
+          "observationId": {"type": "string", "format": "uuid"},
+          "practitionerId": {"type": "string", "format": "uuid"},
+          "idempotencyKey": {"type": "string", "minLength": 16, "maxLength": 128},
+          "visitType": {"type": "string", "maxLength": 40},
+          "visitReason": {"type": "string", "maxLength": 120},
+          "intakeNote": {"type": "string", "maxLength": 600},
+          "channel": {"type": "string", "enum": ["portal", "desk"]},
+          "reason": {"type": "string", "minLength": 3, "maxLength": 300},
+          "toStatus": {"type": "string", "enum": ["WAITING", "CALLED", "IN_SERVICE", "DONE", "SKIPPED"]},
+          "code": {"type": "string", "minLength": 1, "maxLength": 64},
+          "value": {"type": "number"},
+          "unit": {"type": "string", "minLength": 1, "maxLength": 32},
+          "measuredAt": {"type": "string", "format": "date-time"},
+          "expectedVersion": {"type": "integer", "minimum": 1},
+          "startsAt": {"type": "string", "format": "date-time"},
+          "endsAt": {"type": "string", "format": "date-time"},
+          "slotDurationMinutes": {"type": "integer", "minimum": 15, "maximum": 180},
+          "capacity": {"type": "integer", "minimum": 1, "maximum": 20}
+        },
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "correlation_id"],
+            "additionalProperties": false,
+            "properties": {
+              "code": {"type": "string"},
+              "message": {"type": "string"},
+              "correlation_id": {"type": "string"},
+              "details": {"type": "object"}
+            }
+          }
+        }
+      },
+      "Appointment": {
+        "type": "object",
+        "required": ["id", "tenant_id", "slot_id", "status", "check_in_status", "correlation_id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "tenant_id": {"type": "string"},
+          "slot_id": {"type": "string", "format": "uuid"},
+          "status": {"type": "string", "enum": ["pending", "confirmed", "cancelled", "completed", "no_show"]},
+          "check_in_status": {"type": "string", "enum": ["not_checked_in", "checked_in", "voided"]},
+          "checked_in_at": {"type": ["string", "null"], "format": "date-time"},
+          "visit_type": {"type": ["string", "null"]},
+          "visit_reason": {"type": ["string", "null"]},
+          "intake_note": {"type": ["string", "null"]},
+          "cancel_reason": {"type": ["string", "null"]},
+          "cancelled_at": {"type": ["string", "null"], "format": "date-time"},
+          "rescheduled_from_id": {"type": ["string", "null"], "format": "uuid"},
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "Encounter": {
+        "type": "object",
+        "required": ["id", "appointment_id", "practitioner_id", "status", "correlation_id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "appointment_id": {"type": "string", "format": "uuid"},
+          "practitioner_id": {"type": "string", "format": "uuid"},
+          "status": {"type": "string", "enum": ["open", "in_progress", "completed", "amended", "cancelled"]},
+          "version": {"type": "integer", "minimum": 1},
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "Observation": {
+        "type": "object",
+        "required": ["id", "encounter_id", "code", "value", "unit", "correlation_id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "encounter_id": {"type": "string", "format": "uuid"},
+          "code": {"type": "string"},
+          "value": {"type": "number"},
+          "unit": {"type": "string"},
+          "status": {"type": "string", "enum": ["draft", "preliminary", "final", "amended"]},
+          "version": {"type": "integer", "minimum": 1},
+          "is_latest": {"type": "boolean"},
+          "supersedes_id": {"type": ["string", "null"], "format": "uuid"},
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "QueueTicketResponse": {
+        "type": "object",
+        "required": ["id", "appointment_id", "ticket_number", "status", "correlation_id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "appointment_id": {"type": "string", "format": "uuid"},
+          "ticket_number": {"type": "string"},
+          "status": {"type": "string"},
+          "called_at": {"type": ["string", "null"], "format": "date-time"},
+          "started_at": {"type": ["string", "null"], "format": "date-time"},
+          "completed_at": {"type": ["string", "null"], "format": "date-time"},
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "SpecialtyList": {
+        "type": "object",
+        "required": ["data"],
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name"],
+              "additionalProperties": false,
+              "properties": {"id": {"type": "string"}, "name": {"type": "string"}}
+            }
+          }
+        }
+      },
+      "DoctorList": {
+        "type": "object",
+        "required": ["data"],
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "display_name", "specialty"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": "string"},
+                "display_name": {"type": "string"},
+                "specialty": {"type": "string"},
+                "room_label": {"type": "string"},
+                "degree_title": {"type": "string"},
+                "department_name": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "SlotList": {
+        "type": "object",
+        "required": ["data"],
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "starts_at", "capacity", "remaining"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": "string"},
+                "starts_at": {"type": "string", "format": "date-time"},
+                "ends_at": {"type": "string", "format": "date-time"},
+                "capacity": {"type": "integer", "minimum": 1},
+                "remaining": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "RecordList": {
+        "type": "object",
+        "required": ["data"],
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["resource_ref", "kind"],
+              "additionalProperties": false,
+              "properties": {
+                "resource_ref": {"type": "string"},
+                "kind": {"type": "string", "enum": ["encounter", "observation", "report"]}
+              }
+            }
+          }
+        }
+      },
+      "Metrics": {
+        "type": "object",
+        "required": ["data", "correlation_id"],
+        "additionalProperties": false,
+        "properties": {
+          "data": {"type": "object", "additionalProperties": {"type": "number"}},
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "HealthPayload": {
+        "type": "object",
+        "required": ["status", "service", "correlation_id"],
+        "properties": {
+          "status": {"type": "string"},
+          "service": {"type": "string"},
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "WorkspaceSlice": {
+        "type": "object",
+        "required": ["resource", "tenant", "correlation_id"],
+        "properties": {
+          "resource": {"type": "string"},
+          "tenant": {"type": "object"},
+          "data": {"type": ["array", "object"]},
+          "nextCursor": {"type": ["string", "null"]},
+          "correlation_id": {"type": "string"}
+        }
+      },
+      "DashboardView": {
+        "type": "object",
+        "required": ["role", "tenant", "fetchedAt"],
+        "properties": {
+          "fetchedAt": {"type": "string", "format": "date-time"},
+          "role": {"type": "string", "enum": ["patient", "staff"]},
+          "tenant": {"type": "object"}
+        }
+      }
     },
     "responses": {
       "Unauthorized": {"description": "Invalid or missing token", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
       "Forbidden": {"description": "Authenticated but not authorized", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
       "Conflict": {"description": "Idempotency or state conflict", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
       "NotFound": {"description": "Resource not found or intentionally undisclosed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Health": {"description": "Service health", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthPayload"}}}},
       "Appointment": {"description": "Appointment", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Appointment"}}}},
+      "PublishedSchedule": {"description": "Published schedule summary", "content": {"application/json": {"schema": {"type": "object"}}}},
+      "QueueTicket": {"description": "Queue ticket state", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/QueueTicketResponse"}}}},
       "Encounter": {"description": "Synthetic encounter", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Encounter"}}}},
+      "EncounterCompletion": {"description": "Completed encounter", "content": {"application/json": {"schema": {"type": "object"}}}},
+      "EncounterCancellation": {"description": "Cancelled encounter", "content": {"application/json": {"schema": {"type": "object"}}}},
       "Observation": {"description": "Synthetic observation", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Observation"}}}},
       "Specialties": {"description": "Specialties", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SpecialtyList"}}}},
       "Doctors": {"description": "Doctor summaries", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DoctorList"}}}},
       "Slots": {"description": "Available slots", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlotList"}}}},
       "Records": {"description": "Released record summaries", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RecordList"}}}},
-      "Metrics": {"description": "Aggregated metrics", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Metrics"}}}}
+      "Metrics": {"description": "Aggregated metrics", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Metrics"}}}},
+      "WorkspaceSlice": {"description": "Role-scoped workspace read model slice", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceSlice"}}}},
+      "DashboardView": {"description": "Legacy unified dashboard payload", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DashboardView"}}}},
+      "DashboardMutationResult": {"description": "Mutation acknowledgment", "content": {"application/json": {"schema": {"type": "object"}}}}
     }
   }
 }

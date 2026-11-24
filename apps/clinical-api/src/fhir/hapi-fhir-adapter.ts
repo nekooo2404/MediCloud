@@ -8,11 +8,23 @@ const classification = JSON.parse(readFileSync(classificationPath, 'utf8')) as {
 };
 
 const SYNTHETIC_REF_RE = /^synthetic-[a-z0-9-]+$/;
+const CORRELATION_ID_RE = /^(?:synthetic-[a-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const FHIR_ID_RE = /^[A-Za-z0-9\-.]{1,64}$/;
 const JWT_LIKE_RE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/;
 const TENANT_SECURITY_SYSTEM = 'urn:medicloud:synthetic:tenant';
 const DATA_CLASS_TAG_SYSTEM = 'urn:medicloud:data-class';
 const DATA_CLASS_TAG_CODE = 'restricted-clinical-synthetic';
+const MAPPING_VERSION_SYSTEM = 'urn:medicloud:mapping-version';
+export const FHIR_MAPPING_VERSION = '1.1.0';
+
+const LOINC_OBSERVATION_MAP: Record<string, {loincCode: string; display: string; ucumCode: string}> = {
+  'synthetic-systolic-bp': {loincCode: '8480-6', display: 'Systolic blood pressure', ucumCode: 'mm[Hg]'},
+  'synthetic-diastolic-bp': {loincCode: '8462-4', display: 'Diastolic blood pressure', ucumCode: 'mm[Hg]'},
+  'synthetic-heart-rate': {loincCode: '8867-4', display: 'Heart rate', ucumCode: '/min'},
+  'synthetic-temperature': {loincCode: '8310-5', display: 'Body temperature', ucumCode: 'Cel'},
+  'synthetic-spo2': {loincCode: '59408-5', display: 'Oxygen saturation by Pulse oximetry', ucumCode: '%'},
+  'synthetic-blood-glucose': {loincCode: '2339-0', display: 'Glucose in Blood', ucumCode: 'mmol/L'},
+};
 
 const FHIR_PII_PROHIBITED_KEYS = new Set([
   ...classification.prohibited_event_fields,
@@ -57,7 +69,7 @@ export interface FhirEncounterResource {
   resourceType: 'Encounter';
   id: string;
   meta: FhirMeta;
-  status: 'in-progress' | 'finished';
+  status: 'in-progress' | 'finished' | 'cancelled';
   class: FhirCoding;
   subject: FhirReference;
   participant: readonly {individual: FhirReference}[];
@@ -69,7 +81,7 @@ export interface FhirObservationResource {
   resourceType: 'Observation';
   id: string;
   meta: FhirMeta;
-  status: 'final';
+  status: 'preliminary' | 'final' | 'amended';
   code: {coding: readonly FhirCoding[]};
   subject: FhirReference;
   encounter: FhirReference;
@@ -104,7 +116,10 @@ function buildMeta(profileUrl: string, tenantCode: string): FhirMeta {
   return {
     profile: [profileUrl],
     security: [{system: TENANT_SECURITY_SYSTEM, code: tenantCode}],
-    tag: [{system: DATA_CLASS_TAG_SYSTEM, code: DATA_CLASS_TAG_CODE}],
+    tag: [
+      {system: DATA_CLASS_TAG_SYSTEM, code: DATA_CLASS_TAG_CODE},
+      {system: MAPPING_VERSION_SYSTEM, code: FHIR_MAPPING_VERSION},
+    ],
   };
 }
 
@@ -126,15 +141,17 @@ export function toFhirEncounter(input: {
   appointmentId: string;
   patientId: string;
   practitionerId: string;
-  status: 'OPEN' | 'COMPLETED';
+  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'AMENDED' | 'CANCELLED';
   createdAt?: Date;
   completedAt?: Date | null;
 }): FhirEncounterResource {
+  const mappedStatus =
+    input.status === 'CANCELLED' ? 'cancelled' : input.status === 'COMPLETED' || input.status === 'AMENDED' ? 'finished' : 'in-progress';
   const resource: FhirEncounterResource = {
     resourceType: 'Encounter',
     id: input.id,
     meta: buildMeta('http://hl7.org/fhir/StructureDefinition/Encounter', input.tenantCode),
-    status: input.status === 'COMPLETED' ? 'finished' : 'in-progress',
+    status: mappedStatus,
     class: {
       system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode',
       code: 'AMB',
@@ -165,24 +182,37 @@ export function toFhirObservation(input: {
   value: number;
   unit: string;
   measuredAt: Date;
+  status?: 'PRELIMINARY' | 'FINAL' | 'AMENDED' | 'DRAFT';
 }): FhirObservationResource {
+  const mapped = LOINC_OBSERVATION_MAP[input.code];
+  const fhirStatus: FhirObservationResource['status'] =
+    input.status === 'AMENDED' ? 'amended' : input.status === 'PRELIMINARY' || input.status === 'DRAFT' ? 'preliminary' : 'final';
+  const coding: FhirCoding[] = [{system: 'urn:medicloud:synthetic:observation-code', code: input.code}];
+  if (mapped) {
+    coding.push({system: 'http://loinc.org', code: mapped.loincCode, display: mapped.display});
+  }
   const resource: FhirObservationResource = {
     resourceType: 'Observation',
     id: input.id,
     meta: buildMeta('http://hl7.org/fhir/StructureDefinition/Observation', input.tenantCode),
-    status: 'final',
-    code: {
-      coding: [{system: 'urn:medicloud:synthetic:observation-code', code: input.code}],
-    },
+    status: fhirStatus,
+    code: {coding},
     subject: {reference: `Patient/${input.patientId}`},
     encounter: {reference: `Encounter/${input.encounterId}`},
     effectiveDateTime: input.measuredAt.toISOString(),
-    valueQuantity: {
-      value: input.value,
-      unit: input.unit,
-      system: 'urn:medicloud:synthetic:unit',
-      code: input.unit,
-    },
+    valueQuantity: mapped
+      ? {
+          value: input.value,
+          unit: input.unit,
+          system: 'http://unitsofmeasure.org',
+          code: mapped.ucumCode,
+        }
+      : {
+          value: input.value,
+          unit: input.unit,
+          system: 'urn:medicloud:synthetic:unit',
+          code: input.unit,
+        },
   };
   validateFhirR4Resource(resource);
   return resource;
@@ -266,7 +296,7 @@ export function validateFhirR4Resource(resource: unknown): asserts resource is F
     }
     case 'Encounter': {
       const encounter = candidate as FhirEncounterResource;
-      if (!['in-progress', 'finished'].includes(encounter.status) || encounter.class?.code !== 'AMB') {
+      if (!['in-progress', 'finished', 'cancelled'].includes(encounter.status) || encounter.class?.code !== 'AMB') {
         throw new FhirConformanceError('invalid_fhir_encounter', 'FHIR Encounter requires valid status and AMB class');
       }
       if (!isValidFhirReference(encounter.subject?.reference, 'Patient')) {
@@ -283,8 +313,12 @@ export function validateFhirR4Resource(resource: unknown): asserts resource is F
     case 'Observation': {
       const observation = candidate as FhirObservationResource;
       const primaryCoding = observation.code?.coding?.[0];
-      if (observation.status !== 'final' || !primaryCoding || !SYNTHETIC_REF_RE.test(primaryCoding.code)) {
-        throw new FhirConformanceError('invalid_fhir_observation_code', 'FHIR Observation requires final status and synthetic code');
+      if (
+        !['preliminary', 'final', 'amended'].includes(observation.status) ||
+        !primaryCoding ||
+        !SYNTHETIC_REF_RE.test(primaryCoding.code)
+      ) {
+        throw new FhirConformanceError('invalid_fhir_observation_code', 'FHIR Observation requires valid status and synthetic primary code');
       }
       if (!isValidFhirReference(observation.subject?.reference, 'Patient') || !isValidFhirReference(observation.encounter?.reference, 'Encounter')) {
         throw new FhirConformanceError('invalid_fhir_observation_refs', 'FHIR Observation requires Patient and Encounter references');
@@ -311,7 +345,10 @@ function isPrivateIpv4(host: string): boolean {
   return false;
 }
 
-export function assertPrivateFhirEndpoint(baseUrl: string): URL {
+export function assertPrivateFhirEndpoint(
+  baseUrl: string,
+  options: {requireTls?: boolean; allowedHosts?: readonly string[]} = {},
+): URL {
   let parsed: URL;
   try {
     parsed = new URL(baseUrl);
@@ -320,6 +357,10 @@ export function assertPrivateFhirEndpoint(baseUrl: string): URL {
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
     throw new FhirBoundaryError('invalid_fhir_protocol', 'HAPI FHIR endpoint must use http or https');
+  }
+  const requireTls = options.requireTls ?? process.env.MEDICLOUD_ENV === 'production';
+  if (requireTls && parsed.protocol !== 'https:') {
+    throw new FhirBoundaryError('fhir_tls_required', 'Production HAPI FHIR endpoint requires HTTPS/mTLS transport');
   }
   if (parsed.username || parsed.password) {
     throw new FhirBoundaryError('fhir_endpoint_credentials_forbidden', 'HAPI FHIR URL must not embed credentials');
@@ -337,6 +378,12 @@ export function assertPrivateFhirEndpoint(baseUrl: string): URL {
     rawHost.endsWith('.ec2.internal');
   if (isCloudMetadataHost) {
     throw new FhirBoundaryError('public_fhir_endpoint_forbidden', 'Cloud metadata endpoints are forbidden');
+  }
+  if (options.allowedHosts && options.allowedHosts.length > 0) {
+    const normalizedAllowlist = options.allowedHosts.map((h) => h.trim().toLowerCase());
+    if (!normalizedAllowlist.includes(rawHost)) {
+      throw new FhirBoundaryError('fhir_egress_not_allowlisted', `FHIR host ${rawHost} is outside configured egress allowlist`);
+    }
   }
   const isLoopbackHost = rawHost === 'localhost' || rawHost === '::1';
   const ipVersion = isIP(rawHost);
@@ -365,28 +412,61 @@ export function createPrivateHapiFhirClient(options: {
   baseUrl: string;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  bearerToken?: string;
+  requireTlsAndAuth?: boolean;
+  allowedHosts?: readonly string[];
+  maxRetries?: number;
 }): PrivateHapiFhirClient {
-  const endpoint = assertPrivateFhirEndpoint(options.baseUrl);
+  const requireTlsAndAuth = options.requireTlsAndAuth ?? process.env.MEDICLOUD_ENV === 'production';
+  const endpoint = assertPrivateFhirEndpoint(options.baseUrl, {
+    requireTls: requireTlsAndAuth,
+    allowedHosts: options.allowedHosts,
+  });
+  const bearerToken = options.bearerToken ?? process.env.HAPI_FHIR_BEARER_TOKEN;
+  if (requireTlsAndAuth && (!bearerToken || bearerToken.trim().length < 8)) {
+    throw new FhirBoundaryError('fhir_auth_required', 'Production HAPI FHIR client requires service bearer/mTLS credential');
+  }
   const basePath = endpoint.toString().replace(/\/+$/, '');
   const timeoutMs = options.timeoutMs ?? 5000;
+  const maxRetries = Math.min(Math.max(options.maxRetries ?? 1, 0), 3);
   const fetchFn = options.fetchImpl ?? fetch;
 
   const ensureCorrelation = (correlationId: string) => {
-    if (!SYNTHETIC_REF_RE.test(correlationId)) {
-      throw new FhirConformanceError('invalid_correlation_id', 'FHIR correlation_id must be synthetic');
+    if (!CORRELATION_ID_RE.test(correlationId)) {
+      throw new FhirConformanceError('invalid_correlation_id', 'FHIR correlation_id must be synthetic or UUID');
     }
   };
 
+  function buildAuthHeaders(correlationId: string, tenantCode?: string): Record<string, string> {
+    return {
+      accept: 'application/fhir+json',
+      'x-correlation-id': correlationId,
+      'x-medicloud-mapping-version': FHIR_MAPPING_VERSION,
+      ...(tenantCode ? {'x-tenant-code': tenantCode} : {}),
+      ...(bearerToken ? {authorization: `Bearer ${bearerToken}`} : {}),
+    };
+  }
+
   async function executeFetch(targetUrl: string, init: RequestInit): Promise<Response> {
-    try {
-      return await fetchFn(targetUrl, {
-        ...init,
-        redirect: 'error',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch {
-      throw new FhirTransportError(503, 'fhir_network_error', 'Private HAPI FHIR request failed');
+    let lastError: FhirTransportError | null = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      try {
+        const response = await fetchFn(targetUrl, {
+          ...init,
+          redirect: 'error',
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if ([502, 503, 504].includes(response.status) && attempt < maxRetries) {
+          lastError = new FhirTransportError(response.status, 'fhir_transient_upstream', `Transient FHIR status ${response.status}`);
+          continue;
+        }
+        return response;
+      } catch {
+        lastError = new FhirTransportError(503, 'fhir_network_error', 'Private HAPI FHIR request failed');
+        if (attempt >= maxRetries) break;
+      }
     }
+    throw lastError ?? new FhirTransportError(503, 'fhir_network_error', 'Private HAPI FHIR request failed');
   }
 
   async function parseJsonResponse(response: Response): Promise<unknown> {
@@ -401,13 +481,13 @@ export function createPrivateHapiFhirClient(options: {
     async upsertResource<T extends FhirR4Resource>(resource: T, correlationId: string): Promise<T> {
       ensureCorrelation(correlationId);
       validateFhirR4Resource(resource);
+      const tenantCode = extractFhirTenantCode(resource);
       const targetUrl = `${basePath}/fhir/${resource.resourceType}/${encodeURIComponent(resource.id)}`;
       const response = await executeFetch(targetUrl, {
         method: 'PUT',
         headers: {
           'content-type': 'application/fhir+json',
-          accept: 'application/fhir+json',
-          'x-correlation-id': correlationId,
+          ...buildAuthHeaders(correlationId, tenantCode),
         },
         body: JSON.stringify(resource),
       });
@@ -416,7 +496,7 @@ export function createPrivateHapiFhirClient(options: {
       }
       const saved = await parseJsonResponse(response);
       validateFhirR4Resource(saved);
-      if (saved.resourceType !== resource.resourceType || extractFhirTenantCode(saved) !== extractFhirTenantCode(resource)) {
+      if (saved.resourceType !== resource.resourceType || extractFhirTenantCode(saved) !== tenantCode) {
         throw new FhirConformanceError('fhir_response_mismatch', 'Private HAPI FHIR returned mismatched resource');
       }
       return saved as T;
@@ -436,10 +516,7 @@ export function createPrivateHapiFhirClient(options: {
       const targetUrl = `${basePath}/fhir/${resourceType}/${encodeURIComponent(id)}`;
       const response = await executeFetch(targetUrl, {
         method: 'GET',
-        headers: {
-          accept: 'application/fhir+json',
-          'x-correlation-id': correlationId,
-        },
+        headers: buildAuthHeaders(correlationId, expectedTenantCode),
       });
       if (response.status === 404) {
         throw new FhirTransportError(404, 'fhir_resource_not_found', 'FHIR resource not found');

@@ -24,13 +24,15 @@
     "db:verify": "tsx apps/clinical-api/prisma/verify-seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint tools/medicloud-agent-company/src apps/patient-portal/app apps/patient-portal/next.config.ts",
-    "ci:lint:all": "eslint .github/scripts apps/clinical-api/src apps/event-relay/src tests tools/medicloud-agent-company/src apps/patient-portal/app apps/patient-portal/next.config.ts",
+    "lint": "eslint tools/medicloud-agent-company/src apps/patient-portal/app apps/patient-portal/components apps/patient-portal/features apps/patient-portal/hooks apps/patient-portal/lib apps/patient-portal/next.config.ts",
+    "ci:lint:all": "eslint .github/scripts apps/clinical-api/src apps/event-relay/src tests tools/medicloud-agent-company/src apps/patient-portal/app apps/patient-portal/components apps/patient-portal/features apps/patient-portal/hooks apps/patient-portal/lib apps/patient-portal/next.config.ts",
     "ci:scan:secrets": "node .github/scripts/secret-and-phi-scan.mjs",
     "ci:scan:deps": "node .github/scripts/dependency-audit.mjs",
     "ci:verify-images": "node .github/scripts/verify-immutable-images.mjs",
     "ci:test": "node --test .github/scripts/t12-policy.test.mjs",
-    "ci:dry-run": "node .github/scripts/ci-dry-run.mjs"
+    "ci:dry-run": "node .github/scripts/ci-dry-run.mjs",
+    "perf:explain": "tsx tools/perf/verify-query-plans.ts",
+    "perf:smoke": "tsx tools/perf/load-benchmark.ts"
   },
   "dependencies": {
     "@astryxdesign/cli": "^0.7.17",

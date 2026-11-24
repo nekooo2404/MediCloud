@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {Prisma, type PrismaClient} from '@prisma/client';
+import {AppointmentStatus, EncounterStatus, ObservationStatus, Prisma, QueueTicketStatus, type PrismaClient} from '@prisma/client';
+import {setTransactionTenantContext, type RlsSqlExecutor} from '../db/tenant-rls.js';
 import {
   FhirBoundaryError,
   FhirConformanceError,
@@ -29,7 +30,8 @@ const classification = JSON.parse(readFileSync(classificationPath, 'utf8')) as {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SYNTHETIC_REF_RE = /^synthetic-[a-z0-9-]+$/;
-const UNIT_RE = /^[a-zA-Z0-9/%._-]{1,32}$/;
+const CORRELATION_ID_RE = /^(?:synthetic-[a-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const UNIT_RE = /^[a-zA-Z0-9°/%._-]{1,32}$/;
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
@@ -39,6 +41,7 @@ export interface ClinicalRequestContext {
   correlationId: string;
   purpose?: string;
   delegatedPatientSubject?: string;
+  requestedTenantId?: string;
 }
 
 export interface ClinicalDependencies extends SchedulingDependencies {
@@ -55,6 +58,16 @@ export interface CreateObservationInput {
   value: number;
   unit: string;
   measuredAt: string;
+  status?: 'PRELIMINARY' | 'FINAL';
+  expectedVersion?: number;
+}
+
+export interface AmendObservationInput {
+  value: number;
+  unit: string;
+  measuredAt: string;
+  reason: string;
+  expectedVersion: number;
 }
 
 function assertUuid(value: string, fieldName: string): void {
@@ -63,7 +76,7 @@ function assertUuid(value: string, fieldName: string): void {
   }
 }
 
-function assertSyntheticObservationInput(input: CreateObservationInput): Date {
+function assertSyntheticObservationInput(input: Pick<CreateObservationInput, 'code' | 'value' | 'unit' | 'measuredAt'>): Date {
   if (input.code.length > 64 || !SYNTHETIC_REF_RE.test(input.code)) {
     throw new SchedulingError(400, 'invalid_synthetic_code', 'observation code must use a synthetic identifier (max 64 chars)');
   }
@@ -98,6 +111,10 @@ function safeSyntheticRef(value: string | undefined, fallback = 'synthetic-redac
   return value && SYNTHETIC_REF_RE.test(value) ? value : fallback;
 }
 
+function safeCorrelationRef(value: string | undefined): string {
+  return value && CORRELATION_ID_RE.test(value) ? value : 'synthetic-redacted-correlation';
+}
+
 function sanitizeAuditMetadata(metadata: Record<string, string | number | boolean>): Prisma.InputJsonValue {
   const sanitized: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(metadata)) {
@@ -109,6 +126,13 @@ function sanitizeAuditMetadata(metadata: Record<string, string | number | boolea
     }
   }
   return sanitized as Prisma.InputJsonValue;
+}
+
+async function applyRlsIfSupported(tx: DbClient, tenantId: string): Promise<void> {
+  const executor = tx as unknown as Partial<RlsSqlExecutor>;
+  if (typeof executor.$executeRawUnsafe === 'function') {
+    await setTransactionTenantContext(executor as RlsSqlExecutor, tenantId);
+  }
 }
 
 async function resolveActorId(client: DbClient, subject: string): Promise<string | null> {
@@ -137,7 +161,7 @@ async function recordAuditEvent(
       action: input.action.slice(0, 80),
       resourceRef: safeSyntheticRef(input.resourceRef),
       purpose: input.purpose.slice(0, 120),
-      correlationId: safeSyntheticRef(input.correlationId, 'synthetic-redacted-correlation'),
+      correlationId: safeCorrelationRef(input.correlationId),
       metadata: sanitizeAuditMetadata(input.metadata ?? {}),
     },
   });
@@ -196,7 +220,7 @@ export async function createEncounter(
   assertUuid(input.appointmentId, 'appointment_id');
   assertUuid(input.practitionerId, 'practitioner_id');
 
-  const effective = await effectivePrincipal(deps, deps.prisma, context.principal);
+  const effective = await effectivePrincipal(deps, deps.prisma, context.principal, context.requestedTenantId);
   const {tenantId, principal} = effective;
   const purposeForAudit = normalizePurposeForAudit(context.purpose);
 
@@ -240,9 +264,7 @@ export async function createEncounter(
   }
 
   const assignedPractitionerSubject =
-    appointment.slot.schedule.practitionerId === practitioner.id
-      ? practitioner.user.subject
-      : undefined;
+    appointment.slot.schedule.practitionerId === practitioner.id ? practitioner.user.subject : undefined;
 
   const decision = authorize({
     principal,
@@ -291,6 +313,7 @@ export async function createEncounter(
   );
 
   const encounter = await deps.prisma.$transaction(async (tx) => {
+    await applyRlsIfSupported(tx, tenantId);
     const actorId = await resolveActorId(tx, principal.subject);
     const created = await tx.encounter.create({
       data: {
@@ -299,10 +322,24 @@ export async function createEncounter(
         appointmentId: appointment.id,
         patientId: appointment.patientId,
         practitionerId: practitioner.id,
-        status: 'OPEN',
+        status: EncounterStatus.OPEN,
+        startedAt: createdAt,
         createdAt,
       },
     });
+
+    const queueTicketDelegate = (tx as Partial<PrismaClient>).queueTicket;
+    if (queueTicketDelegate && typeof queueTicketDelegate.updateMany === 'function') {
+      await queueTicketDelegate.updateMany({
+        where: {
+          tenantId,
+          appointmentId: appointment.id,
+          status: {in: [QueueTicketStatus.CHECKED_IN, QueueTicketStatus.WAITING, QueueTicketStatus.CALLED]},
+        },
+        data: {status: QueueTicketStatus.IN_SERVICE, startedAt: createdAt},
+      });
+    }
+
     await recordAuditEvent(tx, {
       tenantId,
       actorSubject: principal.subject,
@@ -339,10 +376,15 @@ export async function createEncounter(
     appointment_id: encounter.appointmentId,
     practitioner_id: encounter.practitionerId,
     status: 'open' as const,
+    version: encounter.version,
     correlation_id: context.correlationId,
   };
 }
 
+/**
+ * CL-A: Recording an observation transitions Encounter OPEN -> IN_PROGRESS and persists provenance,
+ * intentionally NOT auto-completing the Encounter. Physicians must call completeEncounter explicitly.
+ */
 export async function createObservation(
   deps: ClinicalDependencies,
   context: ClinicalRequestContext,
@@ -353,7 +395,7 @@ export async function createObservation(
   assertUuid(encounterId, 'encounter_id');
   const measuredAt = assertSyntheticObservationInput(input);
 
-  const effective = await effectivePrincipal(deps, deps.prisma, context.principal);
+  const effective = await effectivePrincipal(deps, deps.prisma, context.principal, context.requestedTenantId);
   const {tenantId, principal} = effective;
   const purposeForAudit = normalizePurposeForAudit(context.purpose);
 
@@ -378,13 +420,14 @@ export async function createObservation(
     throw new SchedulingError(404, 'encounter_not_found', 'encounter not found');
   }
 
+  const isOpenOrInProgress = encounter.status === EncounterStatus.OPEN || encounter.status === EncounterStatus.IN_PROGRESS;
   const decision = authorize({
     principal,
     action: 'observation:create:assigned',
     resourceTenantId: tenantId,
     assignedPractitionerSubject: encounter.practitioner.user.subject,
     purpose: context.purpose,
-    resourceStateAllowed: encounter.status === 'OPEN',
+    resourceStateAllowed: isOpenOrInProgress,
     resourceRef: `synthetic-encounter-${encounter.id}`,
     correlationId: context.correlationId,
   });
@@ -404,7 +447,7 @@ export async function createObservation(
   }
 
   const observationId = randomUUID();
-  const completedAt = new Date();
+  const obsStatus = input.status === 'FINAL' ? ObservationStatus.FINAL : ObservationStatus.PRELIMINARY;
   const fhirObservation = handleFhirBuild(() =>
     toFhirObservation({
       id: observationId,
@@ -415,6 +458,7 @@ export async function createObservation(
       value: input.value,
       unit: input.unit,
       measuredAt,
+      status: obsStatus,
     }),
   );
   const fhirEncounter = handleFhirBuild(() =>
@@ -424,21 +468,29 @@ export async function createObservation(
       appointmentId: encounter.appointmentId,
       patientId: encounter.patientId,
       practitionerId: encounter.practitionerId,
-      status: 'COMPLETED',
+      status: 'IN_PROGRESS',
       createdAt: encounter.createdAt,
-      completedAt,
     }),
   );
 
   const observation = await deps.prisma.$transaction(async (tx) => {
+    await applyRlsIfSupported(tx, tenantId);
     const actorId = await resolveActorId(tx, principal.subject);
-    // Atomic compare-and-set transition prevents concurrent double-completion and duplicate outbox emission.
     const transitioned = await tx.encounter.updateMany({
-      where: {id: encounter.id, tenantId, status: 'OPEN'},
-      data: {status: 'COMPLETED', completedAt},
+      where: {
+        id: encounter.id,
+        tenantId,
+        status: {in: [EncounterStatus.OPEN, EncounterStatus.IN_PROGRESS]},
+        ...(input.expectedVersion !== undefined ? {version: input.expectedVersion} : {}),
+      },
+      data: {
+        status: EncounterStatus.IN_PROGRESS,
+        startedAt: encounter.startedAt ?? new Date(),
+        version: {increment: 1},
+      },
     });
     if (transitioned.count !== 1) {
-      throw new SchedulingError(403, 'resource_state_denied', 'observation creation is not permitted for a completed encounter');
+      throw new SchedulingError(409, 'encounter_version_conflict', 'encounter cannot accept observations in its current state or version');
     }
 
     const created = await tx.observation.create({
@@ -449,36 +501,11 @@ export async function createObservation(
         code: input.code,
         value: input.value,
         unit: input.unit,
+        status: obsStatus,
+        version: 1,
+        isLatest: true,
+        authorUserId: actorId,
         measuredAt,
-      },
-    });
-    const observationCount = await tx.observation.count({
-      where: {tenantId, encounterId: encounter.id},
-    });
-
-    // Outbox envelope strictly carries allowlisted synthetic reference and aggregate count (AC-08).
-    const event = {
-      event_id: randomUUID(),
-      event_type: 'encounter.completed',
-      schema_version: 1,
-      tenant_id: encounter.tenant.code,
-      occurred_at: completedAt.toISOString(),
-      correlation_id: context.correlationId,
-      payload: {
-        encounter_ref: `synthetic-encounter-${encounter.id}`,
-        observation_count: observationCount,
-      },
-    };
-    validateEventEnvelope(event);
-    deps.validateOutboxEvent?.(event);
-    await tx.outboxEvent.create({
-      data: {
-        eventId: event.event_id,
-        tenantId,
-        eventType: event.event_type,
-        schemaVersion: event.schema_version,
-        correlationId: event.correlation_id,
-        payload: event.payload as Prisma.InputJsonValue,
       },
     });
 
@@ -492,7 +519,7 @@ export async function createObservation(
       correlationId: context.correlationId,
       metadata: {
         encounter_ref: `synthetic-encounter-${encounter.id}`,
-        status: 'completed',
+        status: obsStatus.toLowerCase(),
       },
     });
     return created;
@@ -522,13 +549,468 @@ export async function createObservation(
     code: observation.code,
     value: Number(observation.value),
     unit: observation.unit,
+    status: observation.status.toLowerCase(),
+    version: observation.version,
+    is_latest: observation.isLatest,
+    correlation_id: context.correlationId,
+  };
+}
+
+export async function amendObservation(
+  deps: ClinicalDependencies,
+  context: ClinicalRequestContext,
+  encounterId: string,
+  observationId: string,
+  input: AmendObservationInput,
+) {
+  validateCorrelationId(context.correlationId);
+  assertUuid(encounterId, 'encounter_id');
+  assertUuid(observationId, 'observation_id');
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+    throw new SchedulingError(400, 'invalid_expected_version', 'expected_version must be a positive integer');
+  }
+  const cleanReason = input.reason.trim().slice(0, 300);
+  if (cleanReason.length < 3 || /\bBearer\s+/i.test(cleanReason)) {
+    throw new SchedulingError(400, 'invalid_amend_reason', 'amendment reason must be at least 3 valid characters');
+  }
+
+  const effective = await effectivePrincipal(deps, deps.prisma, context.principal, context.requestedTenantId);
+  const {tenantId, principal} = effective;
+  const purposeForAudit = normalizePurposeForAudit(context.purpose);
+
+  const prev = await deps.prisma.observation.findFirst({
+    where: {id: observationId, encounterId, tenantId},
+    include: {
+      encounter: {
+        include: {
+          tenant: {select: {code: true}},
+          practitioner: {include: {user: {select: {subject: true}}}},
+        },
+      },
+    },
+  });
+  if (!prev) {
+    throw new SchedulingError(404, 'observation_not_found', 'observation not found');
+  }
+
+  const measuredAt = assertSyntheticObservationInput({
+    code: prev.code,
+    value: input.value,
+    unit: input.unit,
+    measuredAt: input.measuredAt,
+  });
+
+  const decision = authorize({
+    principal,
+    action: 'observation:amend:assigned',
+    resourceTenantId: tenantId,
+    assignedPractitionerSubject: prev.encounter.practitioner.user.subject,
+    purpose: context.purpose,
+    resourceStateAllowed: prev.encounter.status !== EncounterStatus.CANCELLED && prev.isLatest,
+    resourceRef: `synthetic-observation-${prev.id}`,
+    correlationId: context.correlationId,
+  });
+
+  if (!decision.allowed) {
+    const redactedAudit = toAuthorizationAudit(decision, context.correlationId);
+    await recordAuditEvent(deps.prisma, {
+      tenantId,
+      actorSubject: principal.subject,
+      action: 'observation.amend.denied',
+      resourceRef: redactedAudit.resource_ref,
+      purpose: purposeForAudit,
+      correlationId: redactedAudit.correlation_id,
+      metadata: {reason: redactedAudit.reason},
+    });
+    throw new SchedulingError(decision.status as 401 | 403 | 404, decision.reason, 'observation amendment is not permitted');
+  }
+
+  const nextId = randomUUID();
+  const nextVersion = prev.version + 1;
+  const fhirObservation = handleFhirBuild(() =>
+    toFhirObservation({
+      id: nextId,
+      tenantCode: prev.encounter.tenant.code,
+      encounterId,
+      patientId: prev.encounter.patientId,
+      code: prev.code,
+      value: input.value,
+      unit: input.unit,
+      measuredAt,
+      status: 'AMENDED',
+    }),
+  );
+
+  const amended = await deps.prisma.$transaction(async (tx) => {
+    await applyRlsIfSupported(tx, tenantId);
+    const cas = await tx.observation.updateMany({
+      where: {id: prev.id, tenantId, encounterId, isLatest: true, version: input.expectedVersion},
+      data: {isLatest: false},
+    });
+    if (cas.count !== 1) {
+      throw new SchedulingError(409, 'observation_version_conflict', 'observation was already amended concurrently');
+    }
+    const actorId = await resolveActorId(tx, principal.subject);
+    const created = await tx.observation.create({
+      data: {
+        id: nextId,
+        tenantId,
+        encounterId,
+        code: prev.code,
+        value: input.value,
+        unit: input.unit,
+        status: ObservationStatus.AMENDED,
+        version: nextVersion,
+        isLatest: true,
+        supersedesId: prev.id,
+        amendReason: cleanReason,
+        authorUserId: actorId,
+        measuredAt,
+      },
+    });
+
+    if (prev.encounter.status === EncounterStatus.COMPLETED) {
+      await tx.encounter.update({
+        where: {id: encounterId},
+        data: {status: EncounterStatus.AMENDED, version: {increment: 1}},
+      });
+    }
+
+    await recordAuditEvent(tx, {
+      tenantId,
+      actorSubject: principal.subject,
+      actorId,
+      action: 'observation.amend',
+      resourceRef: `synthetic-observation-${created.id}`,
+      purpose: context.purpose!,
+      correlationId: context.correlationId,
+      metadata: {supersedes: `synthetic-observation-${prev.id}`, version: nextVersion},
+    });
+    return created;
+  });
+
+  if (deps.fhirClient) {
+    const client = deps.fhirClient;
+    await handleFhirSync(
+      async () => {
+        await client.upsertResource(fhirObservation, context.correlationId);
+      },
+      {
+        prisma: deps.prisma,
+        tenantId,
+        actorSubject: principal.subject,
+        resourceRef: `synthetic-observation-${amended.id}`,
+        purpose: context.purpose!,
+        correlationId: context.correlationId,
+      },
+    );
+  }
+
+  return {
+    id: amended.id,
+    encounter_id: amended.encounterId,
+    code: amended.code,
+    value: Number(amended.value),
+    unit: amended.unit,
+    status: 'amended' as const,
+    version: amended.version,
+    is_latest: amended.isLatest,
+    supersedes_id: amended.supersedesId,
+    correlation_id: context.correlationId,
+  };
+}
+
+export async function completeEncounter(
+  deps: ClinicalDependencies,
+  context: ClinicalRequestContext,
+  encounterId: string,
+  input: {expectedVersion?: number} = {},
+) {
+  validateCorrelationId(context.correlationId);
+  assertUuid(encounterId, 'encounter_id');
+
+  const effective = await effectivePrincipal(deps, deps.prisma, context.principal, context.requestedTenantId);
+  const {tenantId, principal} = effective;
+  const purposeForAudit = normalizePurposeForAudit(context.purpose);
+
+  const encounter = await deps.prisma.encounter.findUnique({
+    where: {id: encounterId},
+    include: {
+      tenant: {select: {code: true}},
+      practitioner: {include: {user: {select: {subject: true}}}},
+    },
+  });
+
+  if (!encounter || encounter.tenantId !== tenantId) {
+    throw new SchedulingError(404, 'encounter_not_found', 'encounter not found');
+  }
+
+  const decision = authorize({
+    principal,
+    action: 'encounter:complete:assigned',
+    resourceTenantId: tenantId,
+    assignedPractitionerSubject: encounter.practitioner.user.subject,
+    purpose: context.purpose,
+    resourceStateAllowed: encounter.status === EncounterStatus.OPEN || encounter.status === EncounterStatus.IN_PROGRESS,
+    resourceRef: `synthetic-encounter-${encounter.id}`,
+    correlationId: context.correlationId,
+  });
+
+  if (!decision.allowed) {
+    const redactedAudit = toAuthorizationAudit(decision, context.correlationId);
+    await recordAuditEvent(deps.prisma, {
+      tenantId,
+      actorSubject: principal.subject,
+      action: 'encounter.complete.denied',
+      resourceRef: redactedAudit.resource_ref,
+      purpose: purposeForAudit,
+      correlationId: redactedAudit.correlation_id,
+      metadata: {reason: redactedAudit.reason},
+    });
+    throw new SchedulingError(decision.status as 401 | 403 | 404, decision.reason, 'encounter completion is not permitted');
+  }
+
+  const completedAt = new Date();
+  const fhirEncounter = handleFhirBuild(() =>
+    toFhirEncounter({
+      id: encounter.id,
+      tenantCode: encounter.tenant.code,
+      appointmentId: encounter.appointmentId,
+      patientId: encounter.patientId,
+      practitionerId: encounter.practitionerId,
+      status: 'COMPLETED',
+      createdAt: encounter.createdAt,
+      completedAt,
+    }),
+  );
+
+  const result = await deps.prisma.$transaction(async (tx) => {
+    await applyRlsIfSupported(tx, tenantId);
+    const actorId = await resolveActorId(tx, principal.subject);
+    const cas = await tx.encounter.updateMany({
+      where: {
+        id: encounter.id,
+        tenantId,
+        status: {in: [EncounterStatus.OPEN, EncounterStatus.IN_PROGRESS]},
+        ...(input.expectedVersion !== undefined ? {version: input.expectedVersion} : {}),
+      },
+      data: {
+        status: EncounterStatus.COMPLETED,
+        completedAt,
+        completedByUserId: actorId,
+        version: {increment: 1},
+      },
+    });
+    if (cas.count !== 1) {
+      throw new SchedulingError(409, 'encounter_already_completed_or_stale', 'encounter was already completed or modified concurrently');
+    }
+
+    await tx.observation.updateMany({
+      where: {tenantId, encounterId: encounter.id, isLatest: true, status: ObservationStatus.PRELIMINARY},
+      data: {status: ObservationStatus.FINAL},
+    });
+
+    await tx.appointment.updateMany({
+      where: {tenantId, id: encounter.appointmentId, status: {in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED]}},
+      data: {status: AppointmentStatus.COMPLETED},
+    });
+
+    const queueTicketDelegate = (tx as Partial<PrismaClient>).queueTicket;
+    if (queueTicketDelegate && typeof queueTicketDelegate.updateMany === 'function') {
+      await queueTicketDelegate.updateMany({
+        where: {tenantId, appointmentId: encounter.appointmentId, status: {not: QueueTicketStatus.SKIPPED}},
+        data: {status: QueueTicketStatus.DONE, completedAt},
+      });
+    }
+
+    const observationCount = await tx.observation.count({
+      where: {tenantId, encounterId: encounter.id, isLatest: true},
+    });
+
+    const event = {
+      event_id: randomUUID(),
+      event_type: 'encounter.completed',
+      schema_version: 1,
+      tenant_id: encounter.tenant.code,
+      occurred_at: completedAt.toISOString(),
+      correlation_id: context.correlationId,
+      payload: {
+        encounter_ref: `synthetic-encounter-${encounter.id}`,
+        observation_count: observationCount,
+      },
+    };
+    validateEventEnvelope(event);
+    deps.validateOutboxEvent?.(event);
+    await tx.outboxEvent.create({
+      data: {
+        eventId: event.event_id,
+        tenantId,
+        eventType: event.event_type,
+        schemaVersion: event.schema_version,
+        correlationId: event.correlation_id,
+        payload: event.payload as Prisma.InputJsonValue,
+      },
+    });
+
+    await recordAuditEvent(tx, {
+      tenantId,
+      actorSubject: principal.subject,
+      actorId,
+      action: 'encounter.complete',
+      resourceRef: `synthetic-encounter-${encounter.id}`,
+      purpose: context.purpose!,
+      correlationId: context.correlationId,
+      metadata: {observation_count: observationCount, status: 'completed'},
+    });
+
+    return {observationCount};
+  });
+
+  if (deps.fhirClient) {
+    const client = deps.fhirClient;
+    await handleFhirSync(
+      async () => {
+        await client.upsertResource(fhirEncounter, context.correlationId);
+      },
+      {
+        prisma: deps.prisma,
+        tenantId,
+        actorSubject: principal.subject,
+        resourceRef: `synthetic-encounter-${encounter.id}`,
+        purpose: context.purpose!,
+        correlationId: context.correlationId,
+      },
+    );
+  }
+
+  return {
+    id: encounter.id,
+    appointment_id: encounter.appointmentId,
+    status: 'completed' as const,
+    observation_count: result.observationCount,
+    completed_at: completedAt.toISOString(),
+    correlation_id: context.correlationId,
+  };
+}
+
+export async function cancelEncounter(
+  deps: ClinicalDependencies,
+  context: ClinicalRequestContext,
+  encounterId: string,
+  input: {reason: string; expectedVersion?: number},
+) {
+  validateCorrelationId(context.correlationId);
+  assertUuid(encounterId, 'encounter_id');
+  const cleanReason = input.reason.trim().slice(0, 300);
+  if (cleanReason.length < 3 || /\bBearer\s+/i.test(cleanReason)) {
+    throw new SchedulingError(400, 'invalid_cancel_reason', 'cancellation reason must be at least 3 valid characters');
+  }
+
+  const effective = await effectivePrincipal(deps, deps.prisma, context.principal, context.requestedTenantId);
+  const {tenantId, principal} = effective;
+  const encounter = await deps.prisma.encounter.findUnique({
+    where: {id: encounterId},
+    include: {
+      tenant: {select: {code: true}},
+      practitioner: {include: {user: {select: {subject: true}}}},
+    },
+  });
+  if (!encounter || encounter.tenantId !== tenantId) {
+    throw new SchedulingError(404, 'encounter_not_found', 'encounter not found');
+  }
+
+  const decision = authorize({
+    principal,
+    action: 'encounter:cancel:assigned',
+    resourceTenantId: tenantId,
+    assignedPractitionerSubject: encounter.practitioner.user.subject,
+    purpose: context.purpose,
+    resourceStateAllowed: encounter.status === EncounterStatus.OPEN || encounter.status === EncounterStatus.IN_PROGRESS,
+    resourceRef: `synthetic-encounter-${encounter.id}`,
+    correlationId: context.correlationId,
+  });
+  if (!decision.allowed) {
+    throw new SchedulingError(decision.status as 401 | 403 | 404, decision.reason, 'encounter cancellation is not permitted');
+  }
+
+  const cancelledAt = new Date();
+  await deps.prisma.$transaction(async (tx) => {
+    await applyRlsIfSupported(tx, tenantId);
+    const cas = await tx.encounter.updateMany({
+      where: {
+        id: encounter.id,
+        tenantId,
+        status: {in: [EncounterStatus.OPEN, EncounterStatus.IN_PROGRESS]},
+        ...(input.expectedVersion !== undefined ? {version: input.expectedVersion} : {}),
+      },
+      data: {
+        status: EncounterStatus.CANCELLED,
+        cancelledAt,
+        cancelReason: cleanReason,
+        version: {increment: 1},
+      },
+    });
+    if (cas.count !== 1) {
+      throw new SchedulingError(409, 'encounter_state_conflict', 'encounter cannot be cancelled in its current state');
+    }
+    const queueTicketDelegate = (tx as Partial<PrismaClient>).queueTicket;
+    if (queueTicketDelegate && typeof queueTicketDelegate.updateMany === 'function') {
+      await queueTicketDelegate.updateMany({
+        where: {tenantId, appointmentId: encounter.appointmentId, status: {not: QueueTicketStatus.DONE}},
+        data: {status: QueueTicketStatus.SKIPPED, completedAt: cancelledAt},
+      });
+    }
+    await recordAuditEvent(tx, {
+      tenantId,
+      actorSubject: principal.subject,
+      action: 'encounter.cancel',
+      resourceRef: `synthetic-encounter-${encounter.id}`,
+      purpose: context.purpose!,
+      correlationId: context.correlationId,
+      metadata: {status: 'cancelled'},
+    });
+  });
+
+  if (deps.fhirClient) {
+    const client = deps.fhirClient;
+    const fhirEncounter = handleFhirBuild(() =>
+      toFhirEncounter({
+        id: encounter.id,
+        tenantCode: encounter.tenant.code,
+        appointmentId: encounter.appointmentId,
+        patientId: encounter.patientId,
+        practitionerId: encounter.practitionerId,
+        status: 'CANCELLED',
+        createdAt: encounter.createdAt,
+        completedAt: cancelledAt,
+      }),
+    );
+    await handleFhirSync(
+      async () => {
+        await client.upsertResource(fhirEncounter, context.correlationId);
+      },
+      {
+        prisma: deps.prisma,
+        tenantId,
+        actorSubject: principal.subject,
+        resourceRef: `synthetic-encounter-${encounter.id}`,
+        purpose: context.purpose!,
+        correlationId: context.correlationId,
+      },
+    );
+  }
+
+  return {
+    id: encounter.id,
+    status: 'cancelled' as const,
+    cancelled_at: cancelledAt.toISOString(),
     correlation_id: context.correlationId,
   };
 }
 
 export async function listMyRecords(deps: ClinicalDependencies, context: ClinicalRequestContext) {
   validateCorrelationId(context.correlationId);
-  const effective = await effectivePrincipal(deps, deps.prisma, context.principal);
+  const effective = await effectivePrincipal(deps, deps.prisma, context.principal, context.requestedTenantId);
   const {tenantId, principal} = effective;
 
   const isPatient = principal.roles.includes('PATIENT');
@@ -576,7 +1058,11 @@ export async function listMyRecords(deps: ClinicalDependencies, context: Clinica
 
   const [encounters, observations] = await Promise.all([
     deps.prisma.encounter.findMany({where: {tenantId, patientId}, select: {id: true}, orderBy: {createdAt: 'desc'}}),
-    deps.prisma.observation.findMany({where: {tenantId, encounter: {patientId}}, select: {id: true}, orderBy: {measuredAt: 'desc'}}),
+    deps.prisma.observation.findMany({
+      where: {tenantId, isLatest: true, encounter: {patientId}},
+      select: {id: true},
+      orderBy: {measuredAt: 'desc'},
+    }),
   ]);
 
   const data: Array<{resource_ref: string; kind: 'encounter' | 'observation' | 'report'}> = [
@@ -604,7 +1090,7 @@ export async function getAdminMetrics(
   to?: Date,
 ) {
   validateCorrelationId(context.correlationId);
-  const effective = await effectivePrincipal(deps, deps.prisma, context.principal);
+  const effective = await effectivePrincipal(deps, deps.prisma, context.principal, context.requestedTenantId);
   const {tenantId, principal} = effective;
 
   const decision = authorize({

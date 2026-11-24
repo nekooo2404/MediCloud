@@ -1,7 +1,15 @@
 import {createServer, type Server} from 'node:http';
 import {PrismaClient} from '@prisma/client';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {createEncounter, createObservation, getAdminMetrics, listMyRecords, type ClinicalDependencies} from '../apps/clinical-api/src/clinical/service.js';
+import {
+  amendObservation,
+  completeEncounter,
+  createEncounter,
+  createObservation,
+  getAdminMetrics,
+  listMyRecords,
+  type ClinicalDependencies,
+} from '../apps/clinical-api/src/clinical/service.js';
 import {createPrivateHapiFhirClient, type FhirR4Resource, validateFhirR4Resource} from '../apps/clinical-api/src/fhir/hapi-fhir-adapter.js';
 import {listDoctors, listSpecialties} from '../apps/clinical-api/src/scheduling/service.js';
 import type {AuthenticatedPrincipal} from '../apps/clinical-api/src/security/types.js';
@@ -135,8 +143,8 @@ describeDatabase('T09 PostgreSQL clinical, audit, outbox & private FHIR integrat
       prisma.schedule.create({data: {tenantId: tenantBId, practitionerId: docB.id, startsAt: new Date('2026-12-02T08:00:00Z'), endsAt: new Date('2026-12-02T09:00:00Z')}}),
     ]);
     const [slotA, slotB] = await Promise.all([
-      prisma.appointmentSlot.create({data: {tenantId: tenantAId, scheduleId: schedA.id, startsAt: schedA.startsAt, capacity: 2}}),
-      prisma.appointmentSlot.create({data: {tenantId: tenantBId, scheduleId: schedB.id, startsAt: schedB.startsAt, capacity: 2}}),
+      prisma.appointmentSlot.create({data: {tenantId: tenantAId, scheduleId: schedA.id, startsAt: schedA.startsAt, endsAt: schedA.endsAt, capacity: 2}}),
+      prisma.appointmentSlot.create({data: {tenantId: tenantBId, scheduleId: schedB.id, startsAt: schedB.startsAt, endsAt: schedB.endsAt, capacity: 2}}),
     ]);
     const [apptA, apptB] = await Promise.all([
       prisma.appointment.create({data: {tenantId: tenantAId, patientId: patientA.id, slotId: slotA.id, status: 'CONFIRMED', idempotencyKey: `synthetic-t09-appt-a-${uuid()}`}}),
@@ -152,6 +160,7 @@ describeDatabase('T09 PostgreSQL clinical, audit, outbox & private FHIR integrat
       await prisma.observation.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.encounter.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.outboxEvent.deleteMany({where: {tenantId: {in: tenantIds}}});
+      await prisma.queueTicket.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.appointment.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.appointmentSlot.deleteMany({where: {tenantId: {in: tenantIds}}});
       await prisma.schedule.deleteMany({where: {tenantId: {in: tenantIds}}});
@@ -186,36 +195,54 @@ describeDatabase('T09 PostgreSQL clinical, audit, outbox & private FHIR integrat
         clinicalDeps,
         {principal: docPrincipal, correlationId, purpose: 'treatment'},
         encounter.id,
-        {code: 'synthetic-vital-temp', value: 36.6, unit: 'Cel', measuredAt: '2026-12-02T08:15:00Z'},
+        {code: 'synthetic-temperature', value: 36.6, unit: '°C', measuredAt: '2026-12-02T08:15:00Z'},
       ),
       createObservation(
         clinicalDeps,
         {principal: docPrincipal, correlationId, purpose: 'treatment'},
         encounter.id,
-        {code: 'synthetic-vital-hr', value: 72, unit: 'bpm', measuredAt: '2026-12-02T08:16:00Z'},
+        {code: 'synthetic-heart-rate', value: 72, unit: 'bpm', measuredAt: '2026-12-02T08:16:00Z'},
       ),
     ]);
     const fulfilled = [r1, r2].filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof createObservation>>> => result.status === 'fulfilled');
-    const rejected = [r1, r2].filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-    expect(rejected[0].reason).toMatchObject({status: 403, code: 'resource_state_denied'});
+    expect(fulfilled).toHaveLength(2);
     const observation = fulfilled[0].value;
     expect(observation.encounter_id).toBe(encounter.id);
+    expect(observation.status).toBe('preliminary');
+
+    // Recording observations MUST NOT auto-complete encounter or emit encounter.completed
+    expect(await prisma.outboxEvent.count({where: {tenantId: tenantAId, eventType: 'encounter.completed', correlationId}})).toBe(0);
+
+    const amended = await amendObservation(
+      clinicalDeps,
+      {principal: docPrincipal, correlationId, purpose: 'treatment'},
+      encounter.id,
+      observation.id,
+      {value: 36.9, unit: '°C', measuredAt: '2026-12-02T08:17:00Z', reason: 'Kiểm tra lại thân nhiệt', expectedVersion: 1},
+    );
+    expect(amended.version).toBe(2);
+
+    const [c1, c2] = await Promise.allSettled([
+      completeEncounter(clinicalDeps, {principal: docPrincipal, correlationId, purpose: 'treatment'}, encounter.id),
+      completeEncounter(clinicalDeps, {principal: docPrincipal, correlationId, purpose: 'treatment'}, encounter.id),
+    ]);
+    expect([c1, c2].filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect([c1, c2].filter((r) => r.status === 'rejected')).toHaveLength(1);
 
     const outboxCount = await prisma.outboxEvent.count({where: {tenantId: tenantAId, eventType: 'encounter.completed', correlationId}});
     expect(outboxCount).toBe(1);
 
     const auditCount = await prisma.auditEvent.count({where: {tenantId: tenantAId, correlationId}});
-    expect(auditCount).toBeGreaterThanOrEqual(3);
+    expect(auditCount).toBeGreaterThanOrEqual(4);
 
     expect(fhirStore.has(`Patient/${patientAId}`)).toBe(true);
     expect(fhirStore.has(`Encounter/${encounter.id}`)).toBe(true);
-    expect(fhirStore.has(`Observation/${observation.id}`)).toBe(true);
+    expect(fhirStore.has(`Observation/${amended.id}`)).toBe(true);
 
     const patientPrincipal = principalFor(patientSubject, tenantAId, ['PATIENT']);
     const records = await listMyRecords(clinicalDeps, {principal: patientPrincipal, correlationId: `synthetic-t09-rec-${uuid()}`});
-    expect(records.data.map((item) => item.resource_ref)).toContain(`synthetic-observation-${observation.id}`);
+    expect(records.data.map((item) => item.resource_ref)).toContain(`synthetic-observation-${amended.id}`);
+    expect(records.data.map((item) => item.resource_ref)).not.toContain(`synthetic-observation-${observation.id}`);
 
     const specialties = await listSpecialties(clinicalDeps, {principal: patientPrincipal, correlationId: `synthetic-t09-sp-${uuid()}`});
     const doctors = await listDoctors(clinicalDeps, {principal: patientPrincipal, correlationId: `synthetic-t09-doc-${uuid()}`});

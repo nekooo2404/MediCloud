@@ -7,8 +7,16 @@ export interface AuthenticatedPrincipal {
   audience: string | string[];
   roles: readonly Role[];
   tenantIds: readonly string[];
-  delegations?: readonly {tenantId: string; patientSubject: string; expiresAt: string; revoked: boolean}[];
+  delegations?: readonly {
+    tenantId: string;
+    patientSubject: string;
+    scope?: string;
+    expiresAt: string;
+    revoked: boolean;
+  }[];
   active: boolean;
+  organizationId?: string;
+  departmentId?: string;
 }
 
 export interface AuthorizationContext {
@@ -22,6 +30,7 @@ export interface AuthorizationContext {
   assignedPractitionerSubject?: string;
   purpose?: string;
   resourceStateAllowed?: boolean;
+  breakGlassReason?: string;
 }
 
 export interface AuthorizationDecision {
