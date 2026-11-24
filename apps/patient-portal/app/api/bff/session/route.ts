@@ -239,6 +239,7 @@ export async function DELETE(request: Request) {
       status: 200,
       headers: {
         'set-cookie': buildClearSessionCookieHeader(),
+        'clear-site-data': '"cookies", "storage"',
         'x-correlation-id': correlationId,
       },
     },

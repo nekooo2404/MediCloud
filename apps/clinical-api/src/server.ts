@@ -66,20 +66,31 @@ const oidcVerifier =
       })
     : null;
 
-const ALLOWED_ORIGINS = new Set([
+const DEFAULT_DEV_ORIGINS = [
+  'https://localhost',
+  'https://localhost:8443',
   'https://localhost:3000',
   'https://localhost:3001',
-  'https://127.0.0.1:3000',
-  'https://127.0.0.1:3001',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:3001',
-  ...(process.env.CORS_ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-]);
+];
+
+function parseAllowedOrigins(): Set<string> {
+  const raw = (process.env.CORS_ALLOWED_ORIGINS ?? '').trim();
+  const entries = raw
+    ? raw
+        .split(',')
+        .map((origin) => origin.trim().replace(/\/+$/, ''))
+        .filter((origin) => origin.length > 0 && origin !== '*')
+    : IS_PRODUCTION
+      ? []
+      : DEFAULT_DEV_ORIGINS;
+  return new Set(entries);
+}
+
+const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 const PRINCIPAL_DIRECTORY: Record<string, {role: 'patient' | 'staff'; principal: AuthenticatedPrincipal}> = {
   'synthetic-bff-patient': {
@@ -240,16 +251,26 @@ function buildSecurityHeaders(req: IncomingMessage, correlationId: string): Reco
     'content-type': 'application/json; charset=utf-8',
     'x-content-type-options': 'nosniff',
     'x-frame-options': 'DENY',
+    'cross-origin-resource-policy': 'same-origin',
     'cache-control': 'no-store, max-age=0',
     'x-correlation-id': correlationId,
+    vary: 'Origin',
   };
   if (origin && ALLOWED_ORIGINS.has(origin)) {
     headers['access-control-allow-origin'] = origin;
-    headers['vary'] = 'Origin';
     headers['access-control-allow-methods'] = 'GET, POST, OPTIONS';
     headers['access-control-allow-headers'] = 'content-type, authorization, x-correlation-id, idempotency-key, x-tenant-id';
   }
   return headers;
+}
+
+function applySecurityHeaders(req: IncomingMessage, res: ServerResponse, correlationId: string): void {
+  const headers = buildSecurityHeaders(req, correlationId);
+  for (const [key, value] of Object.entries(headers)) {
+    if (key !== 'content-type') {
+      res.setHeader(key, value);
+    }
+  }
 }
 
 function sendJson(req: IncomingMessage, res: ServerResponse, status: number, payload: unknown, correlationId: string): void {
@@ -273,6 +294,23 @@ export async function createClinicalApiRequestHandler(req: IncomingMessage, res:
       : `synthetic-api-${randomUUID().slice(0, 12)}`;
 
   if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+      sendJson(
+        req,
+        res,
+        403,
+        {
+          error: {
+            code: 'cors_origin_forbidden',
+            message: 'Origin không nằm trong danh sách CORS_ALLOWED_ORIGINS.',
+            correlation_id: correlationId,
+          },
+        },
+        correlationId,
+      );
+      return;
+    }
     res.writeHead(204, buildSecurityHeaders(req, correlationId));
     res.end();
     return;
@@ -701,6 +739,7 @@ export async function createClinicalApiRequestHandler(req: IncomingMessage, res:
     }
   }
 
+  applySecurityHeaders(req, res, correlationId);
   await clinicalHandler(req, res);
 }
 
