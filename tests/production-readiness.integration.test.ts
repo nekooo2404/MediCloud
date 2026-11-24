@@ -18,6 +18,13 @@ import {
   updatePatientProfileView,
 } from '../apps/clinical-api/src/modules/admin/service.js';
 import {checkDistributedRateLimit, renderPrometheusMetrics} from '../apps/clinical-api/src/infra/rate-limiter.js';
+import {
+  HOST_SESSION_COOKIE_NAME,
+  buildSetSessionCookieHeader,
+} from '../apps/patient-portal/app/_lib/session';
+import {DELETE as deletePortalSession} from '../apps/patient-portal/app/api/bff/session/route';
+import {createClinicalApiRequestHandler} from '../apps/clinical-api/src/server.js';
+import type {IncomingMessage, ServerResponse} from 'node:http';
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -30,6 +37,72 @@ describe('Production-readiness Auth, Profile, Admin & Metrics', () => {
 
     const metricsText = renderPrometheusMetrics();
     expect(metricsText).toContain('medicloud_process_uptime_seconds');
+  });
+
+  it('uses __Host- prefixed Secure cookie on HTTPS requests and sends Clear-Site-Data with cache on logout', async () => {
+    const setCookie = buildSetSessionCookieHeader(
+      'signed.token',
+      new Request('https://medicloud.example/api/bff/session'),
+    );
+    expect(setCookie.startsWith(`${HOST_SESSION_COOKIE_NAME}=`)).toBe(true);
+    expect(setCookie).toContain('Secure');
+    expect(setCookie).toContain('Path=/');
+    expect(setCookie).not.toContain('Domain=');
+
+    const logoutResponse = await deletePortalSession(
+      new Request('https://medicloud.example/api/bff/session', {method: 'DELETE'}),
+    );
+    expect(logoutResponse.status).toBe(200);
+    expect(logoutResponse.headers.get('clear-site-data')).toBe('"cookies", "storage", "cache"');
+  });
+
+  it('rejects cross-site non-navigational Fetch Metadata requests and advertises Vary headers', async () => {
+    let statusCode = 0;
+    let headersSent: Record<string, string | string[] | number> = {};
+    let bodyText = '';
+    const listeners = new Map<string, Array<() => void>>();
+
+    const mockReq = {
+      method: 'POST',
+      url: '/v1/auth/login',
+      headers: {
+        'sec-fetch-site': 'cross-site',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-dest': 'empty',
+        origin: 'https://evil.example',
+      },
+      socket: {remoteAddress: '127.0.0.1'},
+    } as unknown as IncomingMessage;
+
+    const mockRes = {
+      statusCode: 200,
+      on(event: string, listener: () => void) {
+        const list = listeners.get(event) ?? [];
+        list.push(listener);
+        listeners.set(event, list);
+        return this;
+      },
+      setHeader(name: string, value: string) {
+        headersSent[name.toLowerCase()] = value;
+      },
+      writeHead(code: number, hdrs: Record<string, string>) {
+        statusCode = code;
+        headersSent = {...headersSent, ...hdrs};
+        return this;
+      },
+      end(chunk?: string) {
+        bodyText = chunk ?? '';
+        for (const listener of listeners.get('finish') ?? []) {
+          listener();
+        }
+        return this;
+      },
+    } as unknown as ServerResponse;
+
+    await createClinicalApiRequestHandler(mockReq, mockRes);
+    expect(statusCode).toBe(403);
+    expect(String(headersSent.vary)).toContain('Sec-Fetch-Site');
+    expect(JSON.parse(bodyText).error.code).toBe('cross_site_request_forbidden');
   });
 });
 

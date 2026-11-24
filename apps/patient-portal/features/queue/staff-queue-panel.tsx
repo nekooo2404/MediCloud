@@ -48,7 +48,7 @@ export function StaffQueuePanel({
       if (!done) return 1;
       return 2;
     };
-    return [...tickets].sort((a, b) => score(a) - score(b));
+    return tickets.toSorted((a, b) => score(a) - score(b));
   }, [tickets, activePractitionerId]);
 
   const activeTicket = useMemo(

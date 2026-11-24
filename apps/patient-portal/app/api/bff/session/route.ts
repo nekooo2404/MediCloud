@@ -8,7 +8,10 @@ import {
   createAccountSessionCookieValue,
   createSessionCookieValue,
   getSyntheticPersona,
+  HOST_SESSION_COOKIE_NAME,
+  isHttpsRequest,
   readSessionFromRequest,
+  SESSION_COOKIE_NAME,
   SYNTHETIC_PERSONAS,
 } from '../../../_lib/session';
 import type { ActiveSession } from '../../../_lib/types';
@@ -233,15 +236,19 @@ export async function DELETE(request: Request) {
     mode: process.env.CLINICAL_API_BASE_URL ? 'upstream' : 'synthetic',
     reason: 'session_cleared',
   });
+  const headers = new Headers({
+    'clear-site-data': '"cookies", "storage", "cache"',
+    'x-correlation-id': correlationId,
+  });
+  headers.append('set-cookie', buildClearSessionCookieHeader(SESSION_COOKIE_NAME, false));
+  if (isHttpsRequest(request) || process.env.MEDICLOUD_ENV === 'production') {
+    headers.append('set-cookie', buildClearSessionCookieHeader(HOST_SESSION_COOKIE_NAME, true));
+  }
   return NextResponse.json(
     { authenticated: false, session: null, correlation_id: correlationId },
     {
       status: 200,
-      headers: {
-        'set-cookie': buildClearSessionCookieHeader(),
-        'clear-site-data': '"cookies", "storage"',
-        'x-correlation-id': correlationId,
-      },
+      headers,
     },
   );
 }

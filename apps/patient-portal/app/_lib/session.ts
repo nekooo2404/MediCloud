@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { ActiveSession, SyntheticPersona, SyntheticPersonaId } from './types';
 
 export const SESSION_COOKIE_NAME = 'medicloud_demo_session';
+export const HOST_SESSION_COOKIE_NAME = '__Host-medicloud_session';
 
 const SYNTHETIC_SESSION_SECRET =
   process.env.PORTAL_SESSION_SECRET ?? 'synthetic-medicloud-p0-portal-session-secret-not-for-prod';
@@ -159,35 +160,51 @@ export function readCookieFromHeader(cookieHeader: string | null | undefined, co
   return null;
 }
 
+export function isHttpsRequest(request?: Request): boolean {
+  const forwardedProto = request?.headers.get('x-forwarded-proto');
+  if (forwardedProto === 'https') return true;
+  if (!request) return false;
+  try {
+    return new URL(request.url).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function resolveSessionCookieName(request?: Request): string {
+  return isHttpsRequest(request) || process.env.MEDICLOUD_ENV === 'production'
+    ? HOST_SESSION_COOKIE_NAME
+    : SESSION_COOKIE_NAME;
+}
+
 export function readSessionFromRequest(request: Request): ActiveSession | null {
   const cookieHeader = request.headers.get('cookie');
+  const hostRaw = readCookieFromHeader(cookieHeader, HOST_SESSION_COOKIE_NAME);
+  if (hostRaw) {
+    const parsed = verifySessionCookieValue(hostRaw);
+    if (parsed) return parsed;
+  }
   const raw = readCookieFromHeader(cookieHeader, SESSION_COOKIE_NAME);
   return verifySessionCookieValue(raw);
 }
 
 export function buildSetSessionCookieHeader(value: string, request?: Request): string {
+  const isHttps = isHttpsRequest(request) || process.env.MEDICLOUD_ENV === 'production';
+  const cookieName = isHttps ? HOST_SESSION_COOKIE_NAME : SESSION_COOKIE_NAME;
   const attributes = [
-    `${SESSION_COOKIE_NAME}=${encodeURIComponent(value)}`,
+    `${cookieName}=${encodeURIComponent(value)}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
     'Max-Age=28800',
   ];
-  const forwardedProto = request?.headers.get('x-forwarded-proto');
-  let isHttps = forwardedProto === 'https';
-  if (!isHttps && request) {
-    try {
-      isHttps = new URL(request.url).protocol === 'https:';
-    } catch {
-      isHttps = false;
-    }
-  }
   if (isHttps) {
     attributes.push('Secure');
   }
   return attributes.join('; ');
 }
 
-export function buildClearSessionCookieHeader(): string {
-  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+export function buildClearSessionCookieHeader(cookieName = SESSION_COOKIE_NAME, isHttps = false): string {
+  const base = `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  return isHttps ? `${base}; Secure` : base;
 }

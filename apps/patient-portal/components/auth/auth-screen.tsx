@@ -19,7 +19,6 @@ type FieldKey =
   | 'email'
   | 'password'
   | 'newPassword'
-  | 'confirmPassword'
   | 'consent'
 
 interface FieldValues {
@@ -27,7 +26,6 @@ interface FieldValues {
   email: string
   password: string
   newPassword: string
-  confirmPassword: string
   consent: boolean
   rememberMe: boolean
 }
@@ -37,7 +35,6 @@ const INITIAL_VALUES: FieldValues = {
   email: '',
   password: '',
   newPassword: '',
-  confirmPassword: '',
   consent: false,
   rememberMe: false,
 }
@@ -76,16 +73,6 @@ function validateAuthField(
       }
       return null
     }
-    case 'confirmPassword': {
-      if (mode !== 'signup') return null
-      if (!values.confirmPassword) {
-        return 'Vui lòng nhập lại mật khẩu xác nhận.'
-      }
-      if (values.confirmPassword !== values.newPassword) {
-        return 'Mật khẩu xác nhận chưa khớp.'
-      }
-      return null
-    }
     case 'consent': {
       if (mode !== 'signup') return null
       return values.consent
@@ -100,7 +87,6 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   email: 'Địa chỉ email',
   password: 'Mật khẩu',
   newPassword: 'Mật khẩu',
-  confirmPassword: 'Xác nhận mật khẩu',
   consent: 'Điều khoản sử dụng',
 }
 
@@ -420,14 +406,14 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   const emailErrorId = useId()
   const passwordErrorId = useId()
   const newPasswordErrorId = useId()
-  const confirmPasswordErrorId = useId()
   const consentErrorId = useId()
+  const resetTokenErrorId = useId()
+  const resetPasswordErrorId = useId()
 
   const fullNameRef = useRef<HTMLInputElement | null>(null)
   const emailRef = useRef<HTMLInputElement | null>(null)
   const passwordRef = useRef<HTMLInputElement | null>(null)
   const newPasswordRef = useRef<HTMLInputElement | null>(null)
-  const confirmPasswordRef = useRef<HTMLInputElement | null>(null)
   const consentRef = useRef<HTMLInputElement | null>(null)
   const announceTimerRef = useRef<number | undefined>(undefined)
 
@@ -441,12 +427,12 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   const [showResetPanel, setShowResetPanel] = useState(false)
   const [resetToken, setResetToken] = useState('')
   const [resetNewPassword, setResetNewPassword] = useState('')
+  const [resetBlurred, setResetBlurred] = useState<{token?: boolean; password?: boolean}>({})
   const [resetStatus, setResetStatus] = useState('')
   const [isResetting, setIsResetting] = useState(false)
 
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   useEffect(() => {
     setValues(INITIAL_VALUES)
@@ -458,7 +444,6 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     setIsSubmitting(false)
     setShowPassword(false)
     setShowNewPassword(false)
-    setShowConfirmPassword(false)
   }, [mode])
 
   useEffect(() => {
@@ -492,7 +477,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   }
 
   const updateTextField = (
-    field: 'fullName' | 'email' | 'password' | 'newPassword' | 'confirmPassword',
+    field: 'fullName' | 'email' | 'password' | 'newPassword',
     nextValue: string,
   ) => {
     const nextValues = { ...values, [field]: nextValue }
@@ -588,7 +573,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     setSubmitted(true)
 
     const order: FieldKey[] = isSignup
-      ? ['fullName', 'email', 'newPassword', 'confirmPassword', 'consent']
+      ? ['fullName', 'email', 'newPassword', 'consent']
       : ['email', 'password']
 
     const refMap: Record<FieldKey, HTMLInputElement | null> = {
@@ -596,7 +581,6 @@ export function AuthScreen({ mode }: AuthScreenProps) {
       email: emailRef.current,
       password: passwordRef.current,
       newPassword: newPasswordRef.current,
-      confirmPassword: confirmPasswordRef.current,
       consent: consentRef.current,
     }
 
@@ -646,8 +630,13 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   const emailError = getFieldError('email')
   const passwordError = getFieldError('password')
   const newPasswordError = getFieldError('newPassword')
-  const confirmPasswordError = getFieldError('confirmPassword')
   const consentError = getFieldError('consent')
+  const resetTokenError =
+    resetBlurred.token && !resetToken.trim() ? 'Vui lòng nhập mã khôi phục mật khẩu.' : null
+  const resetPasswordError =
+    resetBlurred.password && resetNewPassword.length < 12
+      ? 'Mật khẩu mới phải có ít nhất 12 ký tự.'
+      : null
 
   return (
     <div className="mc-auth">
@@ -860,48 +849,6 @@ export function AuthScreen({ mode }: AuthScreenProps) {
                     )}
                   </div>
 
-                  <div className="field">
-                    <label htmlFor="confirm-password">Xác nhận mật khẩu</label>
-                    <div className="field-control">
-                      <LockSvg className="field-icon" />
-                      <input
-                        ref={confirmPasswordRef}
-                        id="confirm-password"
-                        name="confirm-password"
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        placeholder="Nhập lại mật khẩu"
-                        autoComplete="new-password"
-                        enterKeyHint="done"
-                        required
-                        value={values.confirmPassword}
-                        aria-invalid={confirmPasswordError ? 'true' : 'false'}
-                        aria-describedby={
-                          confirmPasswordError ? confirmPasswordErrorId : undefined
-                        }
-                        onChange={(e) =>
-                          updateTextField('confirmPassword', e.target.value)
-                        }
-                        onBlur={() => handleFieldBlur('confirmPassword')}
-                      />
-                      <button
-                        type="button"
-                        className="password-toggle"
-                        aria-label={
-                          showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'
-                        }
-                        aria-pressed={showConfirmPassword}
-                        onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      >
-                        <EyeToggleSvg visible={showConfirmPassword} />
-                      </button>
-                    </div>
-                    {confirmPasswordError && (
-                      <p id={confirmPasswordErrorId} className="field-error">
-                        {confirmPasswordError}
-                      </p>
-                    )}
-                  </div>
-
                   <div
                     className="form-row"
                     style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}
@@ -1005,34 +952,59 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             </form>
 
             {!isSignup && showResetPanel && (
-              <form className="auth-form" method="POST" onSubmit={handleConfirmReset} style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #d5e6df' }}>
+              <form className="auth-form" method="POST" noValidate onSubmit={(e) => {
+                setResetBlurred({token: true, password: true});
+                void handleConfirmReset(e);
+              }} style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #d5e6df' }}>
                 <div className="field">
                   <label htmlFor="reset-token">Mã khôi phục mật khẩu</label>
                   <input
                     id="reset-token"
                     name="reset-token"
+                    className="mc-form-control"
                     type="text"
                     required
                     spellCheck={false}
                     autoCapitalize="none"
+                    enterKeyHint="next"
+                    aria-invalid={resetTokenError ? 'true' : 'false'}
+                    aria-describedby={resetTokenError ? resetTokenErrorId : undefined}
                     value={resetToken}
                     onChange={(e) => setResetToken(e.target.value)}
+                    onBlur={() => setResetBlurred((prev) => ({...prev, token: true}))}
                     placeholder="Dán mã khôi phục"
+                    style={{minHeight: '48px', fontSize: 'max(1rem, 1em)'}}
                   />
+                  {resetTokenError && (
+                    <p id={resetTokenErrorId} className="field-error">
+                      {resetTokenError}
+                    </p>
+                  )}
                 </div>
                 <div className="field">
                   <label htmlFor="reset-new-password">Mật khẩu mới (tối thiểu 12 ký tự)</label>
                   <input
                     id="reset-new-password"
                     name="reset-new-password"
+                    className="mc-form-control"
                     type="password"
                     required
                     minLength={12}
                     autoComplete="new-password"
+                    enterKeyHint="done"
+                    aria-invalid={resetPasswordError ? 'true' : 'false'}
+                    aria-describedby={resetPasswordError ? resetPasswordErrorId : undefined}
                     value={resetNewPassword}
                     onChange={(e) => setResetNewPassword(e.target.value)}
+                    onBlur={() => setResetBlurred((prev) => ({...prev, password: true}))}
                     placeholder="Nhập mật khẩu mới"
+                    style={{minHeight: '48px', fontSize: 'max(1rem, 1em)'}}
                   />
+                  {resetPasswordError && (
+                    <p id={resetPasswordErrorId} className="field-error">
+                      {resetPasswordError}
+                    </p>
+                  )}
                 </div>
                 {resetStatus && (
                   <div className="status" role="status" aria-live="polite">

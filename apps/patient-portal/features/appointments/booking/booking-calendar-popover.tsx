@@ -19,17 +19,58 @@ function parseMonth(monthStr: string): {year: number; month: number} {
   return {year: y || 2026, month: m || 11};
 }
 
+function daysInGregorianMonth(year: number, month: number): number {
+  if (month === 2) {
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return isLeap ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+/** Tomohiko Sakamoto day-of-week: returns Monday=0..Sunday=6 without Date.UTC drift. */
+function mondayOffsetForFirstOfMonth(year: number, month: number): number {
+  const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+  let y = year;
+  if (month < 3) y -= 1;
+  const sunZero = (y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + t[month - 1]! + 1) % 7;
+  return (sunZero + 6) % 7;
+}
+
+const MONTH_LABELS_VI = [
+  'tháng 1', 'tháng 2', 'tháng 3', 'tháng 4', 'tháng 5', 'tháng 6',
+  'tháng 7', 'tháng 8', 'tháng 9', 'tháng 10', 'tháng 11', 'tháng 12',
+] as const;
+
 function formatMonthLabel(year: number, month: number): string {
-  const dt = new Date(Date.UTC(year, month - 1, 15));
-  return new Intl.DateTimeFormat('vi-VN', {month: 'long', year: 'numeric'}).format(dt);
+  const temporalApi = (globalThis as {Temporal?: {PlainYearMonth?: {from: (v: {year: number; month: number; calendar: string}) => {toLocaleString: (locale: string, opts: Intl.DateTimeFormatOptions) => string}}}}).Temporal;
+  if (temporalApi?.PlainYearMonth) {
+    try {
+      return temporalApi.PlainYearMonth.from({year, month, calendar: 'iso8601'}).toLocaleString('vi-VN', {
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      // fallback below
+    }
+  }
+  return `${MONTH_LABELS_VI[(month - 1 + 12) % 12] ?? 'tháng 1'} năm ${year}`;
 }
 
 function addMonths(monthStr: string, delta: number): string {
   const {year, month} = parseMonth(monthStr);
-  const dt = new Date(Date.UTC(year, month - 1 + delta, 1));
-  const y = dt.getUTCFullYear();
-  const m = String(dt.getUTCMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
+  const temporalApi = (globalThis as {Temporal?: {PlainYearMonth?: {from: (v: {year: number; month: number; calendar: string}) => {add: (d: {months: number}) => {year: number; month: number}}}}}).Temporal;
+  if (temporalApi?.PlainYearMonth) {
+    try {
+      const next = temporalApi.PlainYearMonth.from({year, month, calendar: 'iso8601'}).add({months: delta});
+      return `${next.year}-${String(next.month).padStart(2, '0')}`;
+    } catch {
+      // fallback below
+    }
+  }
+  const total = year * 12 + (month - 1) + delta;
+  const nextYear = Math.floor(total / 12);
+  const nextMonth = ((total % 12) + 12) % 12 + 1;
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
 }
 
 export function BookingCalendarPopover({
@@ -54,9 +95,8 @@ export function BookingCalendarPopover({
   }, []);
 
   const cells = useMemo(() => {
-    const firstDay = new Date(Date.UTC(year, month - 1, 1));
-    const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
-    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const mondayOffset = mondayOffsetForFirstOfMonth(year, month);
+    const daysInMonth = daysInGregorianMonth(year, month);
     const list: Array<{key: string; day: number; inMonth: boolean}> = [];
     for (let i = 0; i < mondayOffset; i += 1) {
       list.push({key: `pad-start-${i}`, day: 0, inMonth: false});

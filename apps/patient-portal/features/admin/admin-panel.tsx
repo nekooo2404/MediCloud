@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useState, type FormEvent} from 'react';
+import {useEffect, useId, useState, type CSSProperties, type FormEvent} from 'react';
 import {MC_COLORS} from '@/lib/design-tokens';
 
 interface AdminOverviewData {
@@ -23,11 +23,37 @@ interface AdminOverviewData {
   }>;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const CONTROL_STYLE: CSSProperties = {
+  padding: '10px 12px',
+  borderRadius: '8px',
+  border: `1px solid ${MC_COLORS.mintBorder}`,
+  minHeight: '48px',
+  fontSize: 'max(1rem, 1em)',
+  fontFamily: 'inherit',
+  boxSizing: 'border-box',
+};
+
+const FIELD_ERROR_STYLE: CSSProperties = {
+  margin: '2px 0 0',
+  fontSize: '13px',
+  color: MC_COLORS.dangerText,
+  fontWeight: 500,
+};
+
 export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
+  const deptErrId = useId();
+  const staffNameErrId = useId();
+  const staffEmailErrId = useId();
+  const staffPassErrId = useId();
+
   const [data, setData] = useState<AdminOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const markTouched = (key: string) => setTouched((prev) => ({...prev, [key]: true}));
 
   const [deptName, setDeptName] = useState('');
   const [staffName, setStaffName] = useState('');
@@ -41,6 +67,11 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
   const [slotPractitionerId, setSlotPractitionerId] = useState('');
   const [slotDate, setSlotDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [slotCapacity, setSlotCapacity] = useState('4');
+
+  const deptError = touched.deptName && deptName.trim().length < 2 ? 'Tên khoa/phòng phải có ít nhất 2 ký tự.' : null;
+  const staffNameError = touched.staffName && staffName.trim().length < 2 ? 'Họ và tên phải có ít nhất 2 ký tự.' : null;
+  const staffEmailError = touched.staffEmail && !EMAIL_RE.test(staffEmail.trim()) ? 'Email công việc không hợp lệ.' : null;
+  const staffPassError = touched.staffPassword && staffPassword.length < 12 ? 'Mật khẩu phải có ít nhất 12 ký tự.' : null;
 
   const loadAdmin = async () => {
     setLoading(true);
@@ -65,6 +96,8 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
 
   const handleCreateDept = async (event: FormEvent) => {
     event.preventDefault();
+    markTouched('deptName');
+    if (deptName.trim().length < 2) return;
     setError('');
     setStatusMsg('');
     try {
@@ -77,6 +110,7 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
       const json = (await res.json()) as {error?: {message?: string}};
       if (!res.ok) throw new Error(json.error?.message ?? 'Không thể tạo khoa/phòng.');
       setDeptName('');
+      setTouched((prev) => ({...prev, deptName: false}));
       setStatusMsg('Đã thêm khoa/phòng mới.');
       await loadAdmin();
       onUpdated?.();
@@ -87,6 +121,10 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
 
   const handleProvisionStaff = async (event: FormEvent) => {
     event.preventDefault();
+    markTouched('staffName');
+    markTouched('staffEmail');
+    markTouched('staffPassword');
+    if (staffName.trim().length < 2 || !EMAIL_RE.test(staffEmail.trim()) || staffPassword.length < 12) return;
     setError('');
     setStatusMsg('');
     try {
@@ -110,6 +148,7 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
       setStaffName('');
       setStaffEmail('');
       setStaffPassword('');
+      setTouched((prev) => ({...prev, staffName: false, staffEmail: false, staffPassword: false}));
       setStatusMsg('Đã cấp tài khoản nhân viên y tế thành công.');
       await loadAdmin();
       onUpdated?.();
@@ -170,21 +209,28 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
         <>
           <section style={{backgroundColor: '#fff', border: `1px solid ${MC_COLORS.mintBorder}`, borderRadius: '14px', padding: '18px'}}>
             <h3 style={{margin: '0 0 10px', fontSize: '16px', color: MC_COLORS.textInk}}>Quản lý Khoa / Phòng khám</h3>
-            <form method="POST" onSubmit={handleCreateDept} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end', marginBottom: '12px'}}>
+            <form method="POST" onSubmit={handleCreateDept} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start', marginBottom: '12px'}}>
               <div style={{display: 'grid', gap: '4px', minWidth: '240px', flex: 1}}>
                 <label htmlFor="admin-dept-name" style={{fontSize: '13px', fontWeight: 600}}>Tên khoa / phòng mới</label>
                 <input
                   id="admin-dept-name"
                   name="departmentName"
+                  className="mc-form-control"
                   type="text"
                   required
+                  minLength={2}
+                  enterKeyHint="done"
+                  aria-invalid={deptError ? 'true' : 'false'}
+                  aria-describedby={deptError ? deptErrId : undefined}
                   value={deptName}
                   onChange={(e) => setDeptName(e.target.value)}
+                  onBlur={() => markTouched('deptName')}
                   placeholder="Ví dụ: Khoa Tim mạch"
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  style={CONTROL_STYLE}
                 />
+                {deptError && <p id={deptErrId} style={FIELD_ERROR_STYLE}>{deptError}</p>}
               </div>
-              <button type="submit" style={{padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, minHeight: '44px', cursor: 'pointer'}}>
+              <button type="submit" style={{marginTop: '22px', padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, minHeight: '48px', cursor: 'pointer'}}>
                 Thêm khoa/phòng
               </button>
             </form>
@@ -195,23 +241,72 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
 
           <section style={{backgroundColor: '#fff', border: `1px solid ${MC_COLORS.mintBorder}`, borderRadius: '14px', padding: '18px'}}>
             <h3 style={{margin: '0 0 10px', fontSize: '16px', color: MC_COLORS.textInk}}>Cấp tài khoản Bác sĩ & Nhân viên y tế</h3>
-            <form method="POST" onSubmit={handleProvisionStaff} style={{display: 'grid', gap: '12px', maxWidth: '580px'}}>
+            <form method="POST" onSubmit={handleProvisionStaff} style={{display: 'grid', gap: '14px', maxWidth: '580px'}}>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="staff-fullname" style={{fontSize: '13px', fontWeight: 600}}>Họ và tên</label>
-                <input id="staff-fullname" name="fullName" type="text" required autoComplete="name" value={staffName} onChange={(e) => setStaffName(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}} />
+                <input
+                  id="staff-fullname"
+                  name="fullName"
+                  className="mc-form-control"
+                  type="text"
+                  required
+                  minLength={2}
+                  autoComplete="name"
+                  enterKeyHint="next"
+                  aria-invalid={staffNameError ? 'true' : 'false'}
+                  aria-describedby={staffNameError ? staffNameErrId : undefined}
+                  value={staffName}
+                  onChange={(e) => setStaffName(e.target.value)}
+                  onBlur={() => markTouched('staffName')}
+                  style={CONTROL_STYLE}
+                />
+                {staffNameError && <p id={staffNameErrId} style={FIELD_ERROR_STYLE}>{staffNameError}</p>}
               </div>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="staff-email" style={{fontSize: '13px', fontWeight: 600}}>Email công việc</label>
-                <input id="staff-email" name="email" type="email" required spellCheck={false} autoCapitalize="none" value={staffEmail} onChange={(e) => setStaffEmail(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}} />
+                <input
+                  id="staff-email"
+                  name="email"
+                  className="mc-form-control"
+                  type="email"
+                  required
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  enterKeyHint="next"
+                  aria-invalid={staffEmailError ? 'true' : 'false'}
+                  aria-describedby={staffEmailError ? staffEmailErrId : undefined}
+                  value={staffEmail}
+                  onChange={(e) => setStaffEmail(e.target.value)}
+                  onBlur={() => markTouched('staffEmail')}
+                  style={CONTROL_STYLE}
+                />
+                {staffEmailError && <p id={staffEmailErrId} style={FIELD_ERROR_STYLE}>{staffEmailError}</p>}
               </div>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="staff-password" style={{fontSize: '13px', fontWeight: 600}}>Mật khẩu khởi tạo (tối thiểu 12 ký tự)</label>
-                <input id="staff-password" name="password" type="password" required minLength={12} autoComplete="new-password" value={staffPassword} onChange={(e) => setStaffPassword(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}} />
+                <input
+                  id="staff-password"
+                  name="password"
+                  className="mc-form-control"
+                  type="password"
+                  required
+                  minLength={12}
+                  autoComplete="new-password"
+                  enterKeyHint="next"
+                  aria-invalid={staffPassError ? 'true' : 'false'}
+                  aria-describedby={staffPassError ? staffPassErrId : undefined}
+                  value={staffPassword}
+                  onChange={(e) => setStaffPassword(e.target.value)}
+                  onBlur={() => markTouched('staffPassword')}
+                  style={CONTROL_STYLE}
+                />
+                {staffPassError && <p id={staffPassErrId} style={FIELD_ERROR_STYLE}>{staffPassError}</p>}
               </div>
               <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px'}}>
                 <div style={{display: 'grid', gap: '4px'}}>
                   <label htmlFor="staff-role" style={{fontSize: '13px', fontWeight: 600}}>Vai trò</label>
-                  <select id="staff-role" name="role" value={staffRole} onChange={(e) => setStaffRole(e.target.value as typeof staffRole)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}>
+                  <select id="staff-role" name="role" className="mc-form-control" value={staffRole} onChange={(e) => setStaffRole(e.target.value as typeof staffRole)} style={CONTROL_STYLE}>
                     <option value="PHYSICIAN">Bác sĩ (PHYSICIAN)</option>
                     <option value="RECEPTIONIST">Lễ tân (RECEPTIONIST)</option>
                     <option value="NURSE">Điều dưỡng (NURSE)</option>
@@ -220,7 +315,7 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
                 </div>
                 <div style={{display: 'grid', gap: '4px'}}>
                   <label htmlFor="staff-dept" style={{fontSize: '13px', fontWeight: 600}}>Khoa / Phòng</label>
-                  <select id="staff-dept" name="departmentId" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}>
+                  <select id="staff-dept" name="departmentId" className="mc-form-control" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={CONTROL_STYLE}>
                     <option value="">-- Mặc định --</option>
                     {data.departments.map((d) => (
                       <option key={d.id} value={d.id}>{d.name}</option>
@@ -232,15 +327,15 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
                 <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px'}}>
                   <div style={{display: 'grid', gap: '4px'}}>
                     <label htmlFor="staff-specialty" style={{fontSize: '13px', fontWeight: 600}}>Chuyên khoa</label>
-                    <input id="staff-specialty" name="specialty" type="text" value={specialty} onChange={(e) => setSpecialty(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}} />
+                    <input id="staff-specialty" name="specialty" className="mc-form-control" type="text" enterKeyHint="next" value={specialty} onChange={(e) => setSpecialty(e.target.value)} style={CONTROL_STYLE} />
                   </div>
                   <div style={{display: 'grid', gap: '4px'}}>
                     <label htmlFor="staff-room" style={{fontSize: '13px', fontWeight: 600}}>Phòng khám</label>
-                    <input id="staff-room" name="roomLabel" type="text" value={roomLabel} onChange={(e) => setRoomLabel(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}} />
+                    <input id="staff-room" name="roomLabel" className="mc-form-control" type="text" enterKeyHint="done" value={roomLabel} onChange={(e) => setRoomLabel(e.target.value)} style={CONTROL_STYLE} />
                   </div>
                 </div>
               )}
-              <button type="submit" style={{width: 'fit-content', padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, cursor: 'pointer'}}>
+              <button type="submit" style={{width: 'fit-content', minHeight: '48px', padding: '10px 18px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, cursor: 'pointer'}}>
                 Cấp tài khoản nhân viên
               </button>
             </form>
@@ -248,10 +343,10 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
 
           <section style={{backgroundColor: '#fff', border: `1px solid ${MC_COLORS.mintBorder}`, borderRadius: '14px', padding: '18px'}}>
             <h3 style={{margin: '0 0 10px', fontSize: '16px', color: MC_COLORS.textInk}}>Công bố Khung giờ khám (Publish Slots)</h3>
-            <form method="POST" onSubmit={handlePublishSlots} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end'}}>
+            <form method="POST" onSubmit={handlePublishSlots} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start'}}>
               <div style={{display: 'grid', gap: '4px', minWidth: '220px', flex: 1}}>
                 <label htmlFor="slot-doctor" style={{fontSize: '13px', fontWeight: 600}}>Bác sĩ</label>
-                <select id="slot-doctor" name="practitionerId" value={slotPractitionerId} onChange={(e) => setSlotPractitionerId(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}>
+                <select id="slot-doctor" name="practitionerId" className="mc-form-control" value={slotPractitionerId} onChange={(e) => setSlotPractitionerId(e.target.value)} style={CONTROL_STYLE}>
                   {data.practitioners.map((p) => (
                     <option key={p.id} value={p.id}>{p.displayName} ({p.specialty})</option>
                   ))}
@@ -259,13 +354,13 @@ export function AdminPanel({onUpdated}: {onUpdated?: () => void}) {
               </div>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="slot-date" style={{fontSize: '13px', fontWeight: 600}}>Ngày khám</label>
-                <input id="slot-date" name="date" type="date" required value={slotDate} onChange={(e) => setSlotDate(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}} />
+                <input id="slot-date" name="date" className="mc-form-control" type="date" required value={slotDate} onChange={(e) => setSlotDate(e.target.value)} style={CONTROL_STYLE} />
               </div>
-              <div style={{display: 'grid', gap: '4px', width: '110px'}}>
+              <div style={{display: 'grid', gap: '4px', width: '120px'}}>
                 <label htmlFor="slot-cap" style={{fontSize: '13px', fontWeight: 600}}>Số lượt/giờ</label>
-                <input id="slot-cap" name="capacity" type="text" inputMode="numeric" value={slotCapacity} onChange={(e) => setSlotCapacity(e.target.value)} style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}} />
+                <input id="slot-cap" name="capacity" className="mc-form-control" type="text" inputMode="numeric" pattern="\d{1,2}" enterKeyHint="done" value={slotCapacity} onChange={(e) => setSlotCapacity(e.target.value)} style={CONTROL_STYLE} />
               </div>
-              <button type="submit" style={{padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, minHeight: '44px', cursor: 'pointer'}}>
+              <button type="submit" style={{marginTop: '22px', padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, minHeight: '48px', cursor: 'pointer'}}>
                 Mở lịch 08:00–17:00
               </button>
             </form>

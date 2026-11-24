@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useId, useMemo, useState, type FormEvent} from 'react';
+import {useEffect, useId, useMemo, useRef, useState, type FormEvent} from 'react';
 import {CheckCircleIcon, XMarkIcon} from '@heroicons/react/24/outline';
 import type {AppointmentItem, PatientSummary, PractitionerSummary} from '@/lib/api/workspace-client';
 import {MC_COLORS} from '@/lib/design-tokens';
@@ -61,6 +61,7 @@ export function BookingWizardModal({
   onSubmitBooking,
 }: BookingWizardModalProps) {
   const titleId = useId();
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedPatientId, setSelectedPatientId] = useState<string>(defaultPatientId || patients[0]?.id || '');
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL');
@@ -91,13 +92,14 @@ export function BookingWizardModal({
   }, [isOpen, mode, rescheduleTarget, defaultPatientId, patients, practitioners]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !isSubmitting) onClose();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (isOpen && !dialog.open) {
+      dialog.showModal();
+    } else if (!isOpen && dialog.open) {
+      dialog.close();
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, isSubmitting, onClose]);
+  }, [isOpen]);
 
   const activePractitioner = useMemo(
     () => practitioners.find((p) => p.id === selectedPractitionerId),
@@ -134,27 +136,19 @@ export function BookingWizardModal({
   }
 
   return (
-    <section
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      ref={dialogRef}
       aria-labelledby={titleId}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 60,
-        backgroundColor: 'rgba(15, 38, 35, 0.5)',
-        display: 'grid',
-        placeItems: 'center',
-        padding: '16px',
-        overflowY: 'auto',
+      className="mc-modal-dialog"
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!isSubmitting) onClose();
       }}
     >
       <form
         onSubmit={handleConfirm}
         style={{
-          width: 'min(760px, 100%)',
-          maxHeight: '92vh',
-          overflowY: 'auto',
+          width: '100%',
           backgroundColor: '#ffffff',
           borderRadius: '18px',
           border: `1px solid ${MC_COLORS.mintBorder}`,
@@ -166,9 +160,9 @@ export function BookingWizardModal({
       >
         <header style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px'}}>
           <section style={{display: 'grid', gap: '4px'}}>
-            <h2 id={titleId} style={{margin: 0, fontSize: '20px', fontWeight: 700, color: MC_COLORS.textInk}}>
+            <h1 id={titleId} style={{margin: 0, fontSize: '20px', fontWeight: 700, color: MC_COLORS.textInk}}>
               {mode === 'reschedule' ? 'Đổi lịch khám sang khung giờ mới' : 'Đặt lịch khám mới'}
-            </h2>
+            </h1>
             <p style={{margin: 0, fontSize: '13px', color: MC_COLORS.textMuted}}>
               {mode === 'reschedule'
                 ? `Lịch hiện tại: ${rescheduleTarget?.referenceCode ?? ''} · ${rescheduleTarget?.practitionerName ?? ''}`
@@ -179,6 +173,7 @@ export function BookingWizardModal({
             type="button"
             aria-label="Đóng hộp thoại"
             disabled={isSubmitting}
+            autoFocus
             onClick={onClose}
             style={{
               width: '36px',
@@ -366,6 +361,6 @@ export function BookingWizardModal({
           )}
         </footer>
       </form>
-    </section>
+    </dialog>
   );
 }

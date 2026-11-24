@@ -254,7 +254,7 @@ function buildSecurityHeaders(req: IncomingMessage, correlationId: string): Reco
     'cross-origin-resource-policy': 'same-origin',
     'cache-control': 'no-store, max-age=0',
     'x-correlation-id': correlationId,
-    vary: 'Origin',
+    vary: 'Origin, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site',
   };
   if (origin && ALLOWED_ORIGINS.has(origin)) {
     headers['access-control-allow-origin'] = origin;
@@ -314,6 +314,35 @@ export async function createClinicalApiRequestHandler(req: IncomingMessage, res:
     res.writeHead(204, buildSecurityHeaders(req, correlationId));
     res.end();
     return;
+  }
+
+  const secFetchSite = req.headers['sec-fetch-site'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const secFetchDest = req.headers['sec-fetch-dest'];
+  const reqOrigin = req.headers.origin;
+  if (secFetchSite === 'cross-site') {
+    const isAllowedCorsOrigin = Boolean(reqOrigin && ALLOWED_ORIGINS.has(reqOrigin));
+    const isSafeNavigation =
+      req.method === 'GET' &&
+      secFetchMode === 'navigate' &&
+      secFetchDest !== 'object' &&
+      secFetchDest !== 'embed';
+    if (!isAllowedCorsOrigin && !isSafeNavigation) {
+      sendJson(
+        req,
+        res,
+        403,
+        {
+          error: {
+            code: 'cross_site_request_forbidden',
+            message: 'Chính sách Fetch Metadata từ chối yêu cầu cross-site không hợp lệ.',
+            correlation_id: correlationId,
+          },
+        },
+        correlationId,
+      );
+      return;
+    }
   }
 
   const clientIp = req.socket.remoteAddress ?? '127.0.0.1';
@@ -747,9 +776,11 @@ const server = createServer(createClinicalApiRequestHandler);
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? '0.0.0.0';
-server.listen(port, host, () => {
-  console.log(`[clinical-api] Listening on http://${host}:${port} (mode=${IS_PRODUCTION ? 'production' : 'development'})`);
-});
+if (!process.env.VITEST) {
+  server.listen(port, host, () => {
+    console.log(`[clinical-api] Listening on http://${host}:${port} (mode=${IS_PRODUCTION ? 'production' : 'development'})`);
+  });
+}
 
 function shutdown() {
   server.close(async () => {

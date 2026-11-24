@@ -4,11 +4,6 @@
 @import '@astryxdesign/core/astryx.css';
 @import '@astryxdesign/theme-neutral/theme.css';
 @import '@astryxdesign/theme-neutral/fonts.css';
-@import '@astryxdesign/theme-butter/theme.css';
-@import '@astryxdesign/theme-gothic/theme.css';
-@import '@astryxdesign/theme-matcha/theme.css';
-@import '@astryxdesign/theme-stone/theme.css';
-@import '@astryxdesign/theme-y2k/theme.css';
 
 @stylex;
 
@@ -67,6 +62,35 @@ textarea::placeholder {
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(15, 38, 35, 0.5);
+}
+
+dialog.mc-modal-dialog[open] {
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  width: min(760px, calc(100% - 32px));
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+:is(.mc-form-control):user-invalid {
+  border-color: #b42318 !important;
+  background-color: #fef3f2;
+}
+
+:is(.mc-form-control):user-valid {
+  border-color: #126b56;
 }
 
 .visually-hidden:where(:not(:focus-within, :active)) {

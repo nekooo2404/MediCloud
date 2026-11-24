@@ -1,6 +1,6 @@
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { SESSION_COOKIE_NAME, verifySessionCookieValue } from '@/app/_lib/session'
+import { HOST_SESSION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionCookieValue } from '@/app/_lib/session'
 import { HealthDashboard, type NavKey } from '@/components/health-dashboard'
 
 export const dynamic = 'force-dynamic'
@@ -47,7 +47,9 @@ export default async function Home({
     headers(),
     searchParams,
   ])
-  const session = verifySessionCookieValue(cookieStore.get(SESSION_COOKIE_NAME)?.value)
+  const session =
+    verifySessionCookieValue(cookieStore.get(HOST_SESSION_COOKIE_NAME)?.value) ??
+    verifySessionCookieValue(cookieStore.get(SESSION_COOKIE_NAME)?.value)
   if (!session) {
     redirect('/login')
   }

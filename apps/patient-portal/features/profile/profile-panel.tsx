@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useState, type FormEvent} from 'react';
+import {useEffect, useId, useState, type CSSProperties, type FormEvent} from 'react';
 import {MC_COLORS} from '@/lib/design-tokens';
 
 interface ProfileData {
@@ -26,7 +26,32 @@ interface ProfileData {
   }>;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const CONTROL_STYLE: CSSProperties = {
+  padding: '10px 12px',
+  borderRadius: '8px',
+  border: `1px solid ${MC_COLORS.mintBorder}`,
+  minHeight: '48px',
+  fontSize: 'max(1rem, 1em)',
+  fontFamily: 'inherit',
+  boxSizing: 'border-box',
+};
+
+const FIELD_ERROR_STYLE: CSSProperties = {
+  margin: '2px 0 0',
+  fontSize: '13px',
+  color: MC_COLORS.dangerText,
+  fontWeight: 500,
+};
+
 export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
+  const nameErrId = useId();
+  const guardianEmailErrId = useId();
+  const verifyTokenErrId = useId();
+  const currentPassErrId = useId();
+  const newPassErrId = useId();
+
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -46,6 +71,30 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [savingSecurity, setSavingSecurity] = useState(false);
+
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const markTouched = (key: string) => setTouched((prev) => ({...prev, [key]: true}));
+
+  const nameError =
+    touched.displayName && displayName.trim().length < 2
+      ? 'Họ và tên phải có ít nhất 2 ký tự.'
+      : null;
+  const guardianEmailError =
+    touched.guardianEmail && !EMAIL_RE.test(guardianEmail.trim())
+      ? 'Vui lòng nhập email người thân hợp lệ.'
+      : null;
+  const verifyTokenError =
+    touched.verifyToken && !verifyToken.trim()
+      ? 'Vui lòng nhập mã xác minh email.'
+      : null;
+  const currentPasswordError =
+    touched.currentPassword && !currentPassword
+      ? 'Vui lòng nhập mật khẩu hiện tại.'
+      : null;
+  const newPasswordError =
+    touched.newPassword && newPassword.length < 12
+      ? 'Mật khẩu mới phải có ít nhất 12 ký tự.'
+      : null;
 
   const loadProfile = async () => {
     setLoading(true);
@@ -74,6 +123,8 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
 
   const handleSaveProfile = async (event: FormEvent) => {
     event.preventDefault();
+    markTouched('displayName');
+    if (displayName.trim().length < 2) return;
     setSavingProfile(true);
     setStatusMsg('');
     setError('');
@@ -106,6 +157,8 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
 
   const handleAddGuardian = async (event: FormEvent) => {
     event.preventDefault();
+    markTouched('guardianEmail');
+    if (!EMAIL_RE.test(guardianEmail.trim())) return;
     setSavingGuardian(true);
     setStatusMsg('');
     setError('');
@@ -123,6 +176,7 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
       const json = (await res.json()) as {error?: {message?: string}};
       if (!res.ok) throw new Error(json.error?.message ?? 'Không thể thêm người thân.');
       setGuardianEmail('');
+      setTouched((prev) => ({...prev, guardianEmail: false}));
       setStatusMsg('Đã thêm ủy quyền người thân thành công.');
       await loadProfile();
     } catch (err) {
@@ -152,6 +206,8 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
 
   const handleVerifyEmail = async (event: FormEvent) => {
     event.preventDefault();
+    markTouched('verifyToken');
+    if (!verifyToken.trim()) return;
     setSavingSecurity(true);
     setError('');
     setStatusMsg('');
@@ -165,6 +221,7 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
       const json = (await res.json()) as {error?: {message?: string}};
       if (!res.ok) throw new Error(json.error?.message ?? 'Mã xác minh không hợp lệ.');
       setVerifyToken('');
+      setTouched((prev) => ({...prev, verifyToken: false}));
       setStatusMsg('Email của bạn đã được xác minh thành công.');
       await loadProfile();
     } catch (err) {
@@ -176,6 +233,9 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
 
   const handleChangePassword = async (event: FormEvent) => {
     event.preventDefault();
+    markTouched('currentPassword');
+    markTouched('newPassword');
+    if (!currentPassword || newPassword.length < 12) return;
     setSavingSecurity(true);
     setError('');
     setStatusMsg('');
@@ -194,6 +254,7 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
       if (!res.ok) throw new Error(json.error?.message ?? 'Không thể đổi mật khẩu.');
       setCurrentPassword('');
       setNewPassword('');
+      setTouched((prev) => ({...prev, currentPassword: false, newPassword: false}));
       setStatusMsg('Đổi mật khẩu thành công. Các phiên đăng nhập cũ khác đã được thu hồi.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể đổi mật khẩu.');
@@ -231,30 +292,39 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
               Mã hồ sơ: <strong>{data.profile.medicalRecordCode}</strong> · Email: <strong>{data.user.email ?? 'Chưa liên kết'}</strong>{' '}
               ({data.user.emailVerified ? 'Đã xác minh' : 'Chưa xác minh email'})
             </p>
-            <form method="POST" onSubmit={handleSaveProfile} style={{display: 'grid', gap: '12px', maxWidth: '560px'}}>
+            <form method="POST" onSubmit={handleSaveProfile} style={{display: 'grid', gap: '14px', maxWidth: '560px'}}>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="profile-name" style={{fontSize: '13px', fontWeight: 600}}>Họ và tên</label>
                 <input
                   id="profile-name"
                   name="displayName"
+                  className="mc-form-control"
                   type="text"
                   required
+                  minLength={2}
                   autoComplete="name"
+                  enterKeyHint="next"
+                  aria-invalid={nameError ? 'true' : 'false'}
+                  aria-describedby={nameError ? nameErrId : undefined}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  onBlur={() => markTouched('displayName')}
+                  style={CONTROL_STYLE}
                 />
+                {nameError && <p id={nameErrId} style={FIELD_ERROR_STYLE}>{nameError}</p>}
               </div>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="profile-blood" style={{fontSize: '13px', fontWeight: 600}}>Nhóm máu</label>
                 <input
                   id="profile-blood"
                   name="bloodType"
+                  className="mc-form-control"
                   type="text"
+                  enterKeyHint="next"
                   value={bloodType}
                   onChange={(e) => setBloodType(e.target.value)}
                   placeholder="Ví dụ: O+, A-, AB+"
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  style={CONTROL_STYLE}
                 />
               </div>
               <div style={{display: 'grid', gap: '4px'}}>
@@ -262,11 +332,13 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
                 <input
                   id="profile-allergies"
                   name="allergies"
+                  className="mc-form-control"
                   type="text"
+                  enterKeyHint="next"
                   value={allergiesText}
                   onChange={(e) => setAllergiesText(e.target.value)}
                   placeholder="Ví dụ: Penicillin, Hải sản"
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  style={CONTROL_STYLE}
                 />
               </div>
               <div style={{display: 'grid', gap: '4px'}}>
@@ -274,16 +346,18 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
                 <textarea
                   id="profile-notes"
                   name="careTeamNotes"
+                  className="mc-form-control"
                   rows={3}
+                  enterKeyHint="done"
                   value={careTeamNotes}
                   onChange={(e) => setCareTeamNotes(e.target.value)}
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`}}
+                  style={CONTROL_STYLE}
                 />
               </div>
               <button
                 type="submit"
                 disabled={savingProfile}
-                style={{width: 'fit-content', padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, cursor: 'pointer'}}
+                style={{width: 'fit-content', minHeight: '48px', padding: '10px 18px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, cursor: 'pointer'}}
               >
                 {savingProfile ? 'Đang lưu…' : 'Lưu hồ sơ cá nhân'}
               </button>
@@ -292,37 +366,46 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
 
           <section style={{backgroundColor: '#fff', border: `1px solid ${MC_COLORS.mintBorder}`, borderRadius: '14px', padding: '18px'}}>
             <h3 style={{margin: '0 0 10px', fontSize: '16px', color: MC_COLORS.textInk}}>Ủy quyền người thân (Guardian Delegation)</h3>
-            <form method="POST" onSubmit={handleAddGuardian} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end', marginBottom: '14px'}}>
+            <form method="POST" onSubmit={handleAddGuardian} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start', marginBottom: '14px'}}>
               <div style={{display: 'grid', gap: '4px', minWidth: '240px', flex: 1}}>
                 <label htmlFor="guardian-email" style={{fontSize: '13px', fontWeight: 600}}>Email tài khoản người thân</label>
                 <input
                   id="guardian-email"
                   name="guardianEmail"
+                  className="mc-form-control"
                   type="email"
                   required
                   spellCheck={false}
                   autoCapitalize="none"
+                  autoComplete="email"
+                  enterKeyHint="next"
+                  aria-invalid={guardianEmailError ? 'true' : 'false'}
+                  aria-describedby={guardianEmailError ? guardianEmailErrId : undefined}
                   value={guardianEmail}
                   onChange={(e) => setGuardianEmail(e.target.value)}
+                  onBlur={() => markTouched('guardianEmail')}
                   placeholder="nguoithan@email.com"
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  style={CONTROL_STYLE}
                 />
+                {guardianEmailError && <p id={guardianEmailErrId} style={FIELD_ERROR_STYLE}>{guardianEmailError}</p>}
               </div>
               <div style={{display: 'grid', gap: '4px', minWidth: '160px'}}>
                 <label htmlFor="guardian-rel" style={{fontSize: '13px', fontWeight: 600}}>Quan hệ</label>
                 <input
                   id="guardian-rel"
                   name="relationship"
+                  className="mc-form-control"
                   type="text"
+                  enterKeyHint="done"
                   value={relationship}
                   onChange={(e) => setRelationship(e.target.value)}
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  style={CONTROL_STYLE}
                 />
               </div>
               <button
                 type="submit"
                 disabled={savingGuardian}
-                style={{padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, minHeight: '44px', cursor: 'pointer'}}
+                style={{marginTop: '22px', padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, minHeight: '48px', cursor: 'pointer'}}
               >
                 {savingGuardian ? 'Đang thêm…' : 'Cấp quyền người thân'}
               </button>
@@ -340,7 +423,7 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
                     <button
                       type="button"
                       onClick={() => void handleRevokeGuardian(g.id)}
-                      style={{padding: '6px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#991b1b', fontSize: '12px', fontWeight: 600, cursor: 'pointer'}}
+                      style={{minHeight: '40px', padding: '6px 12px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#991b1b', fontSize: '12px', fontWeight: 600, cursor: 'pointer'}}
                     >
                       Thu hồi
                     </button>
@@ -353,63 +436,82 @@ export function ProfilePanel({onUpdated}: {onUpdated?: () => void}) {
           <section style={{backgroundColor: '#fff', border: `1px solid ${MC_COLORS.mintBorder}`, borderRadius: '14px', padding: '18px', display: 'grid', gap: '16px'}}>
             <h3 style={{margin: 0, fontSize: '16px', color: MC_COLORS.textInk}}>Bảo mật tài khoản</h3>
             {!data.user.emailVerified && (
-              <form method="POST" onSubmit={handleVerifyEmail} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end'}}>
+              <form method="POST" onSubmit={handleVerifyEmail} style={{display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start'}}>
                 <div style={{display: 'grid', gap: '4px', minWidth: '240px', flex: 1}}>
                   <label htmlFor="verify-email-token" style={{fontSize: '13px', fontWeight: 600}}>Mã xác minh email</label>
                   <input
                     id="verify-email-token"
                     name="verifyToken"
+                    className="mc-form-control"
                     type="text"
                     required
                     spellCheck={false}
+                    autoCapitalize="none"
+                    enterKeyHint="done"
+                    aria-invalid={verifyTokenError ? 'true' : 'false'}
+                    aria-describedby={verifyTokenError ? verifyTokenErrId : undefined}
                     value={verifyToken}
                     onChange={(e) => setVerifyToken(e.target.value)}
+                    onBlur={() => markTouched('verifyToken')}
                     placeholder="Nhập mã xác minh nhận được khi đăng ký"
-                    style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                    style={CONTROL_STYLE}
                   />
+                  {verifyTokenError && <p id={verifyTokenErrId} style={FIELD_ERROR_STYLE}>{verifyTokenError}</p>}
                 </div>
                 <button
                   type="submit"
                   disabled={savingSecurity}
-                  style={{padding: '10px 16px', borderRadius: '8px', border: `1px solid ${MC_COLORS.brandInk}`, backgroundColor: '#fff', color: MC_COLORS.brandInk, fontWeight: 600, minHeight: '44px', cursor: 'pointer'}}
+                  style={{marginTop: '22px', padding: '10px 16px', borderRadius: '8px', border: `1px solid ${MC_COLORS.brandInk}`, backgroundColor: '#fff', color: MC_COLORS.brandInk, fontWeight: 600, minHeight: '48px', cursor: 'pointer'}}
                 >
                   Xác minh email
                 </button>
               </form>
             )}
 
-            <form method="POST" onSubmit={handleChangePassword} style={{display: 'grid', gap: '12px', maxWidth: '420px'}}>
+            <form method="POST" onSubmit={handleChangePassword} style={{display: 'grid', gap: '14px', maxWidth: '420px'}}>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="current-password" style={{fontSize: '13px', fontWeight: 600}}>Mật khẩu hiện tại</label>
                 <input
                   id="current-password"
                   name="currentPassword"
+                  className="mc-form-control"
                   type="password"
                   required
                   autoComplete="current-password"
+                  enterKeyHint="next"
+                  aria-invalid={currentPasswordError ? 'true' : 'false'}
+                  aria-describedby={currentPasswordError ? currentPassErrId : undefined}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  onBlur={() => markTouched('currentPassword')}
+                  style={CONTROL_STYLE}
                 />
+                {currentPasswordError && <p id={currentPassErrId} style={FIELD_ERROR_STYLE}>{currentPasswordError}</p>}
               </div>
               <div style={{display: 'grid', gap: '4px'}}>
                 <label htmlFor="change-new-password" style={{fontSize: '13px', fontWeight: 600}}>Mật khẩu mới (tối thiểu 12 ký tự)</label>
                 <input
                   id="change-new-password"
                   name="newPassword"
+                  className="mc-form-control"
                   type="password"
                   required
                   minLength={12}
                   autoComplete="new-password"
+                  enterKeyHint="done"
+                  aria-invalid={newPasswordError ? 'true' : 'false'}
+                  aria-describedby={newPasswordError ? newPassErrId : undefined}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  style={{padding: '10px 12px', borderRadius: '8px', border: `1px solid ${MC_COLORS.mintBorder}`, minHeight: '44px'}}
+                  onBlur={() => markTouched('newPassword')}
+                  style={CONTROL_STYLE}
                 />
+                {newPasswordError && <p id={newPassErrId} style={FIELD_ERROR_STYLE}>{newPasswordError}</p>}
               </div>
               <button
                 type="submit"
                 disabled={savingSecurity}
-                style={{width: 'fit-content', padding: '10px 16px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, cursor: 'pointer'}}
+                style={{width: 'fit-content', minHeight: '48px', padding: '10px 18px', borderRadius: '8px', border: 0, backgroundColor: MC_COLORS.brandInk, color: '#fff', fontWeight: 600, cursor: 'pointer'}}
               >
                 {savingSecurity ? 'Đang cập nhật…' : 'Đổi mật khẩu'}
               </button>
