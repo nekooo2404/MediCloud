@@ -5,7 +5,9 @@ tools/medicloud-agent-company/dist/
 coverage/
 .vitest/
 .next/
+.next-staff/
 node_modules/
 .env
 .env.*
 !.env.example
+.impeccable/config.local.json

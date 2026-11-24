@@ -1,0 +1,420 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-24T00:46:00.000Z",
+  "title": "Design System: MediCloud",
+  "extensions": {
+    "colorMeta": {
+      "clinical-emerald": {
+        "role": "primary",
+        "displayName": "Clinical Emerald",
+        "canonical": "oklch(47.3% 0.086 172)",
+        "tonalRamp": [
+          "oklch(18% 0.033 172)",
+          "oklch(28% 0.058 172)",
+          "oklch(39% 0.086 172)",
+          "oklch(50% 0.086 172)",
+          "oklch(62% 0.086 172)",
+          "oklch(74% 0.086 172)",
+          "oklch(86% 0.058 172)",
+          "oklch(95% 0.033 172)"
+        ]
+      },
+      "clinical-emerald-deep": {
+        "role": "primary",
+        "displayName": "Clinical Emerald Deep",
+        "canonical": "oklch(44.8% 0.081 172.7)",
+        "tonalRamp": [
+          "oklch(18% 0.031 172.7)",
+          "oklch(28% 0.055 172.7)",
+          "oklch(39% 0.081 172.7)",
+          "oklch(50% 0.081 172.7)",
+          "oklch(62% 0.081 172.7)",
+          "oklch(74% 0.081 172.7)",
+          "oklch(86% 0.055 172.7)",
+          "oklch(95% 0.031 172.7)"
+        ]
+      },
+      "soft-mint-wash": {
+        "role": "primary",
+        "displayName": "Soft Mint Wash",
+        "canonical": "oklch(96.3% 0.018 170.1)",
+        "tonalRamp": [
+          "oklch(18% 0.007 170.1)",
+          "oklch(28% 0.012 170.1)",
+          "oklch(39% 0.018 170.1)",
+          "oklch(50% 0.018 170.1)",
+          "oklch(62% 0.018 170.1)",
+          "oklch(74% 0.018 170.1)",
+          "oklch(86% 0.012 170.1)",
+          "oklch(95% 0.007 170.1)"
+        ]
+      },
+      "mist-canvas": {
+        "role": "neutral",
+        "displayName": "Mist Canvas",
+        "canonical": "oklch(97.7% 0.003 174.5)",
+        "tonalRamp": [
+          "oklch(18% 0.001 174.5)",
+          "oklch(28% 0.002 174.5)",
+          "oklch(39% 0.003 174.5)",
+          "oklch(50% 0.003 174.5)",
+          "oklch(62% 0.003 174.5)",
+          "oklch(74% 0.003 174.5)",
+          "oklch(86% 0.002 174.5)",
+          "oklch(95% 0.001 174.5)"
+        ]
+      },
+      "pure-surface": {
+        "role": "neutral",
+        "displayName": "Pure Surface",
+        "canonical": "oklch(100% 0 89.9)",
+        "tonalRamp": [
+          "oklch(18% 0 89.9)",
+          "oklch(28% 0 89.9)",
+          "oklch(39% 0 89.9)",
+          "oklch(50% 0 89.9)",
+          "oklch(62% 0 89.9)",
+          "oklch(74% 0 89.9)",
+          "oklch(86% 0 89.9)",
+          "oklch(95% 0 89.9)"
+        ]
+      },
+      "deep-pine-ink": {
+        "role": "neutral",
+        "displayName": "Deep Pine Ink",
+        "canonical": "oklch(33% 0.046 184.1)",
+        "tonalRamp": [
+          "oklch(18% 0.017 184.1)",
+          "oklch(28% 0.031 184.1)",
+          "oklch(39% 0.046 184.1)",
+          "oklch(50% 0.046 184.1)",
+          "oklch(62% 0.046 184.1)",
+          "oklch(74% 0.046 184.1)",
+          "oklch(86% 0.031 184.1)",
+          "oklch(95% 0.017 184.1)"
+        ]
+      },
+      "pine-slate": {
+        "role": "neutral",
+        "displayName": "Pine Slate",
+        "canonical": "oklch(36.1% 0.038 185.2)",
+        "tonalRamp": [
+          "oklch(18% 0.014 185.2)",
+          "oklch(28% 0.026 185.2)",
+          "oklch(39% 0.038 185.2)",
+          "oklch(50% 0.038 185.2)",
+          "oklch(62% 0.038 185.2)",
+          "oklch(74% 0.038 185.2)",
+          "oklch(86% 0.026 185.2)",
+          "oklch(95% 0.014 185.2)"
+        ]
+      },
+      "muted-pine": {
+        "role": "neutral",
+        "displayName": "Muted Pine",
+        "canonical": "oklch(47.3% 0.027 182.8)",
+        "tonalRamp": [
+          "oklch(18% 0.01 182.8)",
+          "oklch(28% 0.018 182.8)",
+          "oklch(39% 0.027 182.8)",
+          "oklch(50% 0.027 182.8)",
+          "oklch(62% 0.027 182.8)",
+          "oklch(74% 0.027 182.8)",
+          "oklch(86% 0.018 182.8)",
+          "oklch(95% 0.01 182.8)"
+        ]
+      },
+      "subtle-pine": {
+        "role": "neutral",
+        "displayName": "Subtle Pine",
+        "canonical": "oklch(50.1% 0.028 183.4)",
+        "tonalRamp": [
+          "oklch(18% 0.011 183.4)",
+          "oklch(28% 0.019 183.4)",
+          "oklch(39% 0.028 183.4)",
+          "oklch(50% 0.028 183.4)",
+          "oklch(62% 0.028 183.4)",
+          "oklch(74% 0.028 183.4)",
+          "oklch(86% 0.019 183.4)",
+          "oklch(95% 0.011 183.4)"
+        ]
+      },
+      "hairline-mist": {
+        "role": "neutral",
+        "displayName": "Hairline Mist",
+        "canonical": "oklch(94.6% 0.008 177.3)",
+        "tonalRamp": [
+          "oklch(18% 0.003 177.3)",
+          "oklch(28% 0.005 177.3)",
+          "oklch(39% 0.008 177.3)",
+          "oklch(50% 0.008 177.3)",
+          "oklch(62% 0.008 177.3)",
+          "oklch(74% 0.008 177.3)",
+          "oklch(86% 0.005 177.3)",
+          "oklch(95% 0.003 177.3)"
+        ]
+      },
+      "control-border": {
+        "role": "neutral",
+        "displayName": "Control Border",
+        "canonical": "oklch(89.3% 0.019 176.4)",
+        "tonalRamp": [
+          "oklch(18% 0.007 176.4)",
+          "oklch(28% 0.013 176.4)",
+          "oklch(39% 0.019 176.4)",
+          "oklch(50% 0.019 176.4)",
+          "oklch(62% 0.019 176.4)",
+          "oklch(74% 0.019 176.4)",
+          "oklch(86% 0.013 176.4)",
+          "oklch(95% 0.007 176.4)"
+        ]
+      },
+      "warm-amber-alert": {
+        "role": "warning",
+        "displayName": "Warm Amber Alert",
+        "canonical": "oklch(49.3% 0.117 55.8)",
+        "tonalRamp": [
+          "oklch(18% 0.044 55.8)",
+          "oklch(28% 0.08 55.8)",
+          "oklch(39% 0.117 55.8)",
+          "oklch(50% 0.117 55.8)",
+          "oklch(62% 0.117 55.8)",
+          "oklch(74% 0.117 55.8)",
+          "oklch(86% 0.08 55.8)",
+          "oklch(95% 0.044 55.8)"
+        ]
+      },
+      "warm-amber-wash": {
+        "role": "warning",
+        "displayName": "Warm Amber Wash",
+        "canonical": "oklch(97.2% 0.023 75.9)",
+        "tonalRamp": [
+          "oklch(18% 0.009 75.9)",
+          "oklch(28% 0.016 75.9)",
+          "oklch(39% 0.023 75.9)",
+          "oklch(50% 0.023 75.9)",
+          "oklch(62% 0.023 75.9)",
+          "oklch(74% 0.023 75.9)",
+          "oklch(86% 0.016 75.9)",
+          "oklch(95% 0.009 75.9)"
+        ]
+      },
+      "warm-umber": {
+        "role": "warning",
+        "displayName": "Warm Umber",
+        "canonical": "oklch(46.6% 0.079 76)",
+        "tonalRamp": [
+          "oklch(18% 0.03 76)",
+          "oklch(28% 0.054 76)",
+          "oklch(39% 0.079 76)",
+          "oklch(50% 0.079 76)",
+          "oklch(62% 0.079 76)",
+          "oklch(74% 0.079 76)",
+          "oklch(86% 0.054 76)",
+          "oklch(95% 0.03 76)"
+        ]
+      },
+      "warm-cream-notice": {
+        "role": "warning",
+        "displayName": "Warm Cream Notice",
+        "canonical": "oklch(98.6% 0.014 84.6)",
+        "tonalRamp": [
+          "oklch(18% 0.005 84.6)",
+          "oklch(28% 0.01 84.6)",
+          "oklch(39% 0.014 84.6)",
+          "oklch(50% 0.014 84.6)",
+          "oklch(62% 0.014 84.6)",
+          "oklch(74% 0.014 84.6)",
+          "oklch(86% 0.01 84.6)",
+          "oklch(95% 0.005 84.6)"
+        ]
+      },
+      "clinical-crimson": {
+        "role": "danger",
+        "displayName": "Clinical Crimson",
+        "canonical": "oklch(50.5% 0.19 27.5)",
+        "tonalRamp": [
+          "oklch(18% 0.072 27.5)",
+          "oklch(28% 0.129 27.5)",
+          "oklch(39% 0.19 27.5)",
+          "oklch(50% 0.19 27.5)",
+          "oklch(62% 0.19 27.5)",
+          "oklch(74% 0.19 27.5)",
+          "oklch(86% 0.129 27.5)",
+          "oklch(95% 0.072 27.5)"
+        ]
+      },
+      "soft-rose-wash": {
+        "role": "danger",
+        "displayName": "Soft Rose Wash",
+        "canonical": "oklch(96.9% 0.015 22.4)",
+        "tonalRamp": [
+          "oklch(18% 0.006 22.4)",
+          "oklch(28% 0.01 22.4)",
+          "oklch(39% 0.015 22.4)",
+          "oklch(50% 0.015 22.4)",
+          "oklch(62% 0.015 22.4)",
+          "oklch(74% 0.015 22.4)",
+          "oklch(86% 0.01 22.4)",
+          "oklch(95% 0.006 22.4)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Tiêu đề <h1> ở đầu mỗi trang."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Số liệu KPI và giá trị nổi bật trên biểu đồ (tabular-nums)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Tiêu đề các thẻ chức năng."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Phụ đề trang và mô tả thao tác."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Nhãn trường biểu mẫu, nút phụ, badge và meta (>=12px)."
+      }
+    },
+    "shadows": [
+      {
+        "name": "cta-elevated",
+        "value": "0 4px 12px rgba(18, 107, 86, 0.2)",
+        "purpose": "Nút CTA chính và nút xác nhận trong modal."
+      },
+      {
+        "name": "toast-elevated",
+        "value": "0 10px 28px rgba(15, 38, 35, 0.22)",
+        "purpose": "Thông báo nổi role=status."
+      },
+      {
+        "name": "modal-dialog",
+        "value": "0 24px 60px rgba(15, 38, 35, 0.25)",
+        "purpose": "Popup đặt lịch role=dialog."
+      }
+    ],
+    "motion": [
+      {
+        "name": "theme-circle-reveal",
+        "value": "cubic-bezier(0.65, 0, 0.35, 1)",
+        "purpose": "Chuyển đổi chế độ hiển thị bằng View Transition hoặc tắt hẳn khi prefers-reduced-motion được bật."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "tablet-stats",
+        "value": "760px"
+      },
+      {
+        "name": "desktop-sidebar",
+        "value": "960px"
+      },
+      {
+        "name": "workspace-two-col",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary CTA Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Nút hành động chính mở hộp thoại đặt lịch khám hoặc tiếp nhận bệnh nhân.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 4.5v15m7.5-7.5h-15\" /></svg>Đặt lịch khám</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border: 0; border-radius: 10px; background-color: #126b56; color: #ffffff; font-family: 'Figtree', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(18, 107, 86, 0.2); } .ds-btn-primary:hover { background-color: #0f6350; } .ds-btn-primary:focus-visible { outline: 2px solid #126b56; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Outline Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Nút viền mảnh dùng cho bộ lọc trạng thái hoặc thao tác xác nhận phụ.",
+      "html": "<button class=\"ds-btn-outline\">Chờ tiếp nhận</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid #cfe0db; border-radius: 8px; background-color: #ffffff; color: #254440; font-family: 'Figtree', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; } .ds-btn-outline:hover { background-color: #e8f7f1; border-color: #126b56; color: #0f6350; } .ds-btn-outline:focus-visible { outline: 2px solid #126b56; outline-offset: 2px; }"
+    },
+    {
+      "name": "Active Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Mục điều hướng đang mở trong sidebar 260px.",
+      "html": "<button class=\"ds-nav-active\" aria-current=\"page\"><span>Tổng quan</span><span class=\"ds-nav-badge\">04</span></button>",
+      "css": ".ds-nav-active { display: flex; align-items: center; gap: 10px; width: 228px; padding: 10px 12px; border: 0; border-radius: 10px; background-color: #e8f7f1; color: #0f6350; font-family: 'Figtree', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; } .ds-nav-active:focus-visible { outline: 2px solid #126b56; outline-offset: 2px; } .ds-nav-badge { margin-inline-start: auto; border-radius: 99px; padding: 2px 8px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; background-color: #fff0dc; color: #924c08; }"
+    },
+    {
+      "name": "Clinical Card",
+      "kind": "card",
+      "refersTo": "card-surface",
+      "description": "Thẻ dữ liệu phẳng với viền 1px giữ nội dung y tế gọn gàng.",
+      "html": "<section class=\"ds-card\"><div class=\"ds-card-head\"><h3 class=\"ds-card-title\">Lịch hẹn khám của bạn</h3><span class=\"ds-card-sub\">Hiển thị 2 / 6 lịch hẹn cá nhân</span></div></section>",
+      "css": ".ds-card { border: 1px solid #e8efed; border-radius: 16px; background-color: #ffffff; font-family: 'Figtree', sans-serif; overflow: hidden; } .ds-card-head { padding: 16px 18px; border-bottom: 1px solid #e8efed; display: flex; flex-direction: column; gap: 4px; } .ds-card-title { margin: 0; font-size: 15px; font-weight: 700; color: #153d38; } .ds-card-sub { font-size: 12px; color: #526965; }"
+    },
+    {
+      "name": "Search Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Ô tìm kiếm trên topbar lọc theo bác sĩ, chuyên khoa và mã lịch hẹn.",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Tìm bác sĩ, chuyên khoa, mã lịch hẹn...\" aria-label=\"Tìm kiếm\" />",
+      "css": ".ds-input { width: 240px; padding: 8px 12px; border: 1px solid #cfe0db; border-radius: 10px; background-color: #ffffff; color: #153d38; caret-color: #126b56; font-family: 'Figtree', sans-serif; font-size: 13px; } .ds-input::placeholder { color: #526965; opacity: 1; } .ds-input:focus-visible { outline: 2px solid #126b56; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Pill Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Nhãn trạng thái xác nhận và cảnh báo chờ tiếp nhận trên từng bản ghi.",
+      "html": "<div class=\"ds-pill-row\"><span class=\"ds-pill-ok\">Đã xác nhận</span><span class=\"ds-pill-warn\">Chờ tiếp nhận</span></div>",
+      "css": ".ds-pill-row { display: inline-flex; gap: 8px; font-family: 'Figtree', sans-serif; } .ds-pill-ok { padding: 5px 10px; border-radius: 99px; background-color: #e9f7f0; color: #0f6350; font-size: 12px; font-weight: 700; } .ds-pill-warn { padding: 5px 10px; border-radius: 99px; background-color: #fff4e5; color: #924c08; font-size: 12px; font-weight: 700; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Clinical Sanctuary",
+    "overview": "MediCloud là giao diện vận hành (Operate mode) cho Người bệnh (:3000) và Nhân viên y tế (:3001), ưu tiên đọc nhanh lịch hẹn và chỉ số lâm sàng trên nền sương ngọc với thẻ trắng viền 1px.",
+    "keyCharacteristics": [
+      "Dùng chung linh kiện tại apps/patient-portal/components/health-dashboard.tsx cho 2 cổng tách vai trò.",
+      "Bề mặt phẳng phân lớp bằng viền mảnh (Flat & Hairline-Layered).",
+      "Tương phản >= 5.5:1; bộ chữ cục bộ Figtree kèm tabular-nums."
+    ],
+    "rules": [
+      {
+        "name": "The Clinical Contrast Rule",
+        "body": "Mọi chữ đạt >= 4.5:1 (WCAG AA); cấm xám nhạt dưới ngưỡng đọc.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mint Surface Pairing Rule",
+        "body": "Nền soft-mint-wash luôn ghép chữ clinical-emerald-deep.",
+        "section": "colors"
+      },
+      {
+        "name": "The 12px Clinical Floor Rule",
+        "body": "Cấm cỡ chữ dưới 12px ở mọi thành phần.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Clinical Figures Rule",
+        "body": "Bật tabular-nums cho KPI, ngày giờ, badge, biểu đồ.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Thẻ và KPI nghỉ luôn phẳng viền 1px.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do giữ cỡ chữ >= 12px và tương phản >= 4.5:1 trên :3000 và :3001.",
+      "Do dùng Figtree kèm tabular-nums cho KPI và mốc thời gian.",
+      "Do báo lỗi role=\"alert\" khi BFF/API suy giảm, không xác nhận giả.",
+      "Do cân bằng hai cột đầu trang bằng cắt trang kèm nút mở rộng."
+    ],
+    "donts": [
+      "Don't dùng Arial, eyebrow trên <h1>, hoặc tên \"An Tâm\" (thống nhất là MediCloud).",
+      "Don't thêm :root overrides vào CSS toàn cục khi dùng Astryx theme."
+    ]
+  }
+}
