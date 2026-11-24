@@ -11,3 +11,6 @@ node_modules/
 .env.*
 !.env.example
 .impeccable/config.local.json
+apps/clinical-api/dist/
+certificates/
+.vercel/

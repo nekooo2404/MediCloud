@@ -25,6 +25,7 @@ LABEL org.opencontainers.image.title="medicloud-patient-portal" \
       org.opencontainers.image.source="https://medicloud.example/repo"
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 COPY --chown=node:node package.json pnpm-lock.yaml ./
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
@@ -33,4 +34,4 @@ COPY --chown=node:node --from=builder /app/themes ./themes
 COPY --chown=node:node --from=builder /app/src ./src
 USER node
 EXPOSE 3000
-CMD ["node", "node_modules/next/dist/bin/next", "start", "apps/patient-portal", "-p", "3000"]
+CMD ["node", "node_modules/next/dist/bin/next", "start", "apps/patient-portal", "-H", "0.0.0.0"]

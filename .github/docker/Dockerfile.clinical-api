@@ -13,7 +13,7 @@ COPY package.json pnpm-lock.yaml tsconfig.json ./
 COPY packages/contracts ./packages/contracts
 COPY apps/clinical-api ./apps/clinical-api
 COPY apps/event-relay ./apps/event-relay
-RUN pnpm exec prisma generate --schema apps/clinical-api/prisma/schema.prisma
+RUN pnpm exec prisma generate --schema apps/clinical-api/prisma/schema.prisma && pnpm run build:api
 
 FROM node:22.15.0-alpine3.21@sha256:ad1aedbcc1b0575074a91ac146d6956476c1f9985994810e4ee02efd932a68fd AS runner
 ARG GIT_COMMIT_SHA=unknown
@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.title="medicloud-clinical-api" \
       org.opencontainers.image.source="https://medicloud.example/repo"
 WORKDIR /app
 ENV NODE_ENV=production
-# PORT=4000 / EXPOSE 4000 reserved for T10 OpenStack HTTP server bootstrap; T12 smoke runs direct Node contract validation offline without Corepack/pnpm.
+ENV HOST=0.0.0.0
 ENV PORT=4000
 COPY --chown=node:node package.json pnpm-lock.yaml ./
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
@@ -34,4 +34,4 @@ COPY --chown=node:node --from=builder /app/apps/clinical-api ./apps/clinical-api
 COPY --chown=node:node --from=builder /app/apps/event-relay ./apps/event-relay
 USER node
 EXPOSE 4000
-CMD ["node", "packages/contracts/validate.mjs"]
+CMD ["node", "apps/clinical-api/dist/server.js"]

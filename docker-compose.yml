@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synthetic}
+      POSTGRES_DB: ${POSTGRES_DB:-medicloud}
+    volumes:
+      - medicloud_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-medicloud}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - medicloud-internal
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: .github/docker/Dockerfile.clinical-api
+    restart: "no"
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "apps/clinical-api/prisma/schema.prisma"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-synthetic}@postgres:5432/${POSTGRES_DB:-medicloud}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - medicloud-internal
+
+  clinical-api:
+    build:
+      context: .
+      dockerfile: .github/docker/Dockerfile.clinical-api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      MEDICLOUD_ENV: ${MEDICLOUD_ENV:-development}
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-synthetic}@postgres:5432/${POSTGRES_DB:-medicloud}?schema=public
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      BFF_ACTOR_SIGNING_SECRET: ${BFF_ACTOR_SIGNING_SECRET:-synthetic-dev-actor-signing-secret-do-not-use-in-prod}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/v1/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - medicloud-internal
+
+  patient-portal:
+    build:
+      context: .
+      dockerfile: .github/docker/Dockerfile.patient-portal
+    restart: unless-stopped
+    ports:
+      - "${PATIENT_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      MEDICLOUD_ENV: ${MEDICLOUD_ENV:-development}
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_PORTAL_ROLE: patient
+      CLINICAL_API_BASE_URL: http://clinical-api:4000
+      CLINICAL_API_SERVICE_TOKEN: ${CLINICAL_API_SERVICE_TOKEN:-synthetic-bff-patient}
+      BFF_ACTOR_SIGNING_SECRET: ${BFF_ACTOR_SIGNING_SECRET:-synthetic-dev-actor-signing-secret-do-not-use-in-prod}
+      PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:-synthetic-medicloud-p0-portal-session-secret-not-for-prod}
+    depends_on:
+      clinical-api:
+        condition: service_healthy
+    networks:
+      - medicloud-internal
+
+  staff-portal:
+    build:
+      context: .
+      dockerfile: .github/docker/Dockerfile.patient-portal
+    restart: unless-stopped
+    ports:
+      - "${STAFF_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      MEDICLOUD_ENV: ${MEDICLOUD_ENV:-development}
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_PORTAL_ROLE: staff
+      CLINICAL_API_BASE_URL: http://clinical-api:4000
+      CLINICAL_API_SERVICE_TOKEN: ${CLINICAL_API_STAFF_TOKEN:-synthetic-bff-staff}
+      BFF_ACTOR_SIGNING_SECRET: ${BFF_ACTOR_SIGNING_SECRET:-synthetic-dev-actor-signing-secret-do-not-use-in-prod}
+      PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:-synthetic-medicloud-p0-portal-session-secret-not-for-prod}
+    depends_on:
+      clinical-api:
+        condition: service_healthy
+    networks:
+      - medicloud-internal
+
+volumes:
+  medicloud_pgdata:
+
+networks:
+  medicloud-internal:
+    driver: bridge

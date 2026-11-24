@@ -463,6 +463,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   const [submitted, setSubmitted] = useState(false)
   const [notice, setNotice] = useState('')
   const [liveAnnouncement, setLiveAnnouncement] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -475,6 +476,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     setSubmitted(false)
     setNotice('')
     setLiveAnnouncement('')
+    setIsSubmitting(false)
     setShowPassword(false)
     setShowNewPassword(false)
     setShowConfirmPassword(false)
@@ -541,7 +543,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     setNotice('Tính năng khôi phục mật khẩu sẽ khả dụng khi tích hợp nhà cung cấp danh tính.')
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     window.clearTimeout(announceTimerRef.current)
     setSubmitted(true)
@@ -568,9 +570,24 @@ export function AuthScreen({ mode }: AuthScreenProps) {
       }
     }
 
-    setNotice(
-      'Đây là bản xem trước. Dịch vụ xác thực chưa được kết nối; không có tài khoản hoặc phiên nào được tạo.',
-    )
+    setIsSubmitting(true)
+    setNotice('')
+    try {
+      const response = await fetch('/api/bff/session', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({persona_id: isSignup ? 'patient-hospital-a' : 'patient-hospital-a'}),
+      })
+      const payload = (await response.json()) as {error?: {message?: string}}
+      if (!response.ok) {
+        throw new Error(payload.error?.message ?? 'Không thể tạo phiên đăng nhập.')
+      }
+      window.location.assign('/')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Không thể kết nối dịch vụ xác thực. Vui lòng thử lại.')
+      setIsSubmitting(false)
+    }
   }
 
   const fullNameError = getFieldError('fullName')
@@ -905,8 +922,8 @@ export function AuthScreen({ mode }: AuthScreenProps) {
                 {notice}
               </div>
 
-              <button className="primary" type="submit">
-                <span>{isSignup ? 'Tạo tài khoản' : 'Đăng nhập'}</span>
+              <button className="primary" type="submit" disabled={isSubmitting}>
+                <span>{isSubmitting ? 'Đang kết nối…' : isSignup ? 'Tạo tài khoản' : 'Đăng nhập'}</span>
                 <ArrowRightSvg />
               </button>
             </form>

@@ -40,10 +40,18 @@ const oidcVerifier =
     : null;
 
 const ALLOWED_ORIGINS = new Set([
+  'https://localhost:3000',
+  'https://localhost:3001',
+  'https://127.0.0.1:3000',
+  'https://127.0.0.1:3001',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:3001',
+  ...(process.env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
 ]);
 
 const PRINCIPAL_DIRECTORY: Record<string, {role: 'patient' | 'staff'; principal: AuthenticatedPrincipal}> = {
@@ -234,7 +242,7 @@ function sendJson(req: IncomingMessage, res: ServerResponse, status: number, pay
   res.end(JSON.stringify(payload));
 }
 
-const server = createServer(async (req, res) => {
+export async function createClinicalApiRequestHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const incomingCorr = Array.isArray(req.headers['x-correlation-id'])
     ? req.headers['x-correlation-id'][0]
     : req.headers['x-correlation-id'];
@@ -404,11 +412,14 @@ const server = createServer(async (req, res) => {
   }
 
   await clinicalHandler(req, res);
-});
+}
+
+const server = createServer(createClinicalApiRequestHandler);
 
 const port = Number(process.env.PORT ?? 4000);
-server.listen(port, '127.0.0.1', () => {
-  console.log(`[clinical-api] Listening on http://127.0.0.1:${port} (mode=${IS_PRODUCTION ? 'production' : 'development'})`);
+const host = process.env.HOST ?? '0.0.0.0';
+server.listen(port, host, () => {
+  console.log(`[clinical-api] Listening on http://${host}:${port} (mode=${IS_PRODUCTION ? 'production' : 'development'})`);
 });
 
 function shutdown() {
