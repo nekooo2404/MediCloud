@@ -16,6 +16,41 @@ services:
     networks:
       - medicloud-internal
 
+  pg-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-synthetic}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-medicloud}
+    volumes:
+      - medicloud_backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          pg_dump -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Fc -f "/backups/medicloud-$$(date +%Y%m%d-%H%M%S).dump" &&
+          ls -1t /backups/medicloud-*.dump | tail -n +8 | xargs -r rm -f || true;
+          sleep 86400;
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - medicloud-internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - medicloud-internal
+
   db-migrate:
     build:
       context: .
@@ -43,7 +78,8 @@ services:
       HOST: 0.0.0.0
       PORT: 4000
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-synthetic}@postgres:5432/${POSTGRES_DB:-medicloud}?schema=public
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      REDIS_URL: redis://redis:6379
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://localhost,https://localhost:8443,http://localhost:3000,http://localhost:3001}
       BFF_ACTOR_SIGNING_SECRET: ${BFF_ACTOR_SIGNING_SECRET:-synthetic-dev-actor-signing-secret-do-not-use-in-prod}
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
@@ -51,11 +87,30 @@ services:
     depends_on:
       db-migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/v1/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - medicloud-internal
+
+  event-relay:
+    build:
+      context: .
+      dockerfile: .github/docker/Dockerfile.clinical-api
+    restart: unless-stopped
+    command: ["node", "apps/event-relay/dist/event-relay/src/worker.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-synthetic}@postgres:5432/${POSTGRES_DB:-medicloud}?schema=public
+      EVENT_RELAY_POLL_MS: ${EVENT_RELAY_POLL_MS:-3000}
+      EVENT_RELAY_WEBHOOK_URL: ${EVENT_RELAY_WEBHOOK_URL:-}
+    depends_on:
+      clinical-api:
+        condition: service_healthy
     networks:
       - medicloud-internal
 
@@ -74,6 +129,9 @@ services:
       NEXT_PUBLIC_PORTAL_ROLE: patient
       CLINICAL_API_BASE_URL: http://clinical-api:4000
       CLINICAL_API_SERVICE_TOKEN: ${CLINICAL_API_SERVICE_TOKEN:-synthetic-bff-patient}
+      OIDC_TOKEN_URL: ${OIDC_TOKEN_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       BFF_ACTOR_SIGNING_SECRET: ${BFF_ACTOR_SIGNING_SECRET:-synthetic-dev-actor-signing-secret-do-not-use-in-prod}
       PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:-synthetic-medicloud-p0-portal-session-secret-not-for-prod}
     depends_on:
@@ -97,6 +155,9 @@ services:
       NEXT_PUBLIC_PORTAL_ROLE: staff
       CLINICAL_API_BASE_URL: http://clinical-api:4000
       CLINICAL_API_SERVICE_TOKEN: ${CLINICAL_API_STAFF_TOKEN:-synthetic-bff-staff}
+      OIDC_TOKEN_URL: ${OIDC_TOKEN_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       BFF_ACTOR_SIGNING_SECRET: ${BFF_ACTOR_SIGNING_SECRET:-synthetic-dev-actor-signing-secret-do-not-use-in-prod}
       PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:-synthetic-medicloud-p0-portal-session-secret-not-for-prod}
     depends_on:
@@ -105,8 +166,40 @@ services:
     networks:
       - medicloud-internal
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"
+    environment:
+      PATIENT_SITE: ${PATIENT_SITE:-https://localhost}
+      STAFF_SITE: ${STAFF_SITE:-https://localhost:8443}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - patient-portal
+      - staff-portal
+    networks:
+      - medicloud-internal
+
+  hapi-fhir:
+    image: hapiproject/hapi:v7.4.0
+    profiles: ["fhir"]
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - medicloud-internal
+
 volumes:
   medicloud_pgdata:
+  medicloud_backups:
+  caddy_data:
+  caddy_config:
 
 networks:
   medicloud-internal:

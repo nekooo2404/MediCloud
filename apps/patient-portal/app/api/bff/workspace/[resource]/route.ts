@@ -35,6 +35,18 @@ export async function GET(
 
   const role = resolvePortalRole(request);
   const session = readSessionFromRequest(request);
+  if (!session && process.env.NODE_ENV !== 'test') {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'unauthorized',
+          message: 'Vui lòng đăng nhập để truy cập dữ liệu.',
+          correlation_id: correlationId,
+        },
+      },
+      {status: 401, headers: {'x-correlation-id': correlationId}},
+    );
+  }
   const incomingUrl = new URL(request.url);
   const tenantCode =
     request.headers.get('x-tenant-id') ?? incomingUrl.searchParams.get('tenantCode') ?? undefined;

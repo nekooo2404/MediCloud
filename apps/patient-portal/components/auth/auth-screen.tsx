@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import {
   useEffect,
@@ -89,7 +90,7 @@ function validateAuthField(
       if (mode !== 'signup') return null
       return values.consent
         ? null
-        : 'Vui lòng xác nhận đây là giao diện thử nghiệm và không nhập dữ liệu thật.'
+        : 'Vui lòng đồng ý với Điều khoản sử dụng và Chính sách bảo mật của MediCloud.'
     }
   }
 }
@@ -100,34 +101,7 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   password: 'Mật khẩu',
   newPassword: 'Mật khẩu',
   confirmPassword: 'Xác nhận mật khẩu',
-  consent: 'Xác nhận dữ liệu thử nghiệm',
-}
-
-function BrandCloudIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path
-        d="M7 14h10M12 9v10"
-        stroke="currentColor"
-        strokeWidth="2.6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6.3 19.6a4.8 4.8 0 0 1-.7-9.5A6.8 6.8 0 0 1 18.7 8.5a5.6 5.6 0 0 1 .1 11.1"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
+  consent: 'Điều khoản sử dụng',
 }
 
 function ShieldCheckSvg() {
@@ -464,6 +438,11 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   const [notice, setNotice] = useState('')
   const [liveAnnouncement, setLiveAnnouncement] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showResetPanel, setShowResetPanel] = useState(false)
+  const [resetToken, setResetToken] = useState('')
+  const [resetNewPassword, setResetNewPassword] = useState('')
+  const [resetStatus, setResetStatus] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
 
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -539,8 +518,68 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     scheduleAnnouncement('consent', msg)
   }
 
-  const handleForgotPassword = () => {
-    setNotice('Tính năng khôi phục mật khẩu sẽ khả dụng khi tích hợp nhà cung cấp danh tính.')
+  const handleForgotPassword = async () => {
+    setShowResetPanel((prev) => !prev)
+    setResetStatus('')
+    if (!values.email.trim()) {
+      setNotice('Nhập địa chỉ email của bạn rồi bấm "Gửi mã khôi phục" bên dưới.')
+      emailRef.current?.focus()
+      return
+    }
+    setIsResetting(true)
+    try {
+      const response = await fetch('/api/bff/session', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({action: 'forgot_password', email: values.email.trim()}),
+      })
+      const payload = (await response.json()) as {accepted?: boolean; resetToken?: string; error?: {message?: string}}
+      if (!response.ok) {
+        throw new Error(payload.error?.message ?? 'Không thể tạo mã khôi phục mật khẩu.')
+      }
+      if (payload.resetToken) {
+        setResetToken(payload.resetToken)
+        setResetStatus(`Đã tạo mã khôi phục (hiệu lực 30 phút): ${payload.resetToken}`)
+      } else {
+        setResetStatus('Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được ghi nhận.')
+      }
+    } catch (error) {
+      setResetStatus(error instanceof Error ? error.message : 'Không thể xử lý yêu cầu.')
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
+  const handleConfirmReset = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!resetToken.trim() || resetNewPassword.length < 12) {
+      setResetStatus('Vui lòng nhập mã khôi phục và mật khẩu mới từ 12 ký tự trở lên.')
+      return
+    }
+    setIsResetting(true)
+    try {
+      const response = await fetch('/api/bff/session', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({
+          action: 'reset_password',
+          token: resetToken.trim(),
+          newPassword: resetNewPassword,
+        }),
+      })
+      const payload = (await response.json()) as {reset?: boolean; error?: {message?: string}}
+      if (!response.ok) {
+        throw new Error(payload.error?.message ?? 'Mã khôi phục không hợp lệ hoặc đã hết hạn.')
+      }
+      setShowResetPanel(false)
+      setResetToken('')
+      setResetNewPassword('')
+      setNotice('Đặt lại mật khẩu thành công! Bạn có thể đăng nhập bằng mật khẩu mới.')
+    } catch (error) {
+      setResetStatus(error instanceof Error ? error.message : 'Không thể đặt lại mật khẩu.')
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -577,7 +616,20 @@ export function AuthScreen({ mode }: AuthScreenProps) {
         method: 'POST',
         headers: {'content-type': 'application/json'},
         credentials: 'same-origin',
-        body: JSON.stringify({persona_id: isSignup ? 'patient-hospital-a' : 'patient-hospital-a'}),
+        body: JSON.stringify(
+          isSignup
+            ? {
+                action: 'signup',
+                fullName: values.fullName.trim(),
+                email: values.email.trim(),
+                password: values.newPassword,
+              }
+            : {
+                action: 'login',
+                email: values.email.trim(),
+                password: values.password,
+              },
+        ),
       })
       const payload = (await response.json()) as {error?: {message?: string}}
       if (!response.ok) {
@@ -601,10 +653,14 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     <div className="mc-auth">
       <header className="top">
         <Link className="brand" href="/login" aria-label="MediCloud — đăng nhập">
-          <span className="brand-mark">
-            <BrandCloudIcon />
-          </span>
-          MediCloud
+          <Image
+            src="/images/medicloud-logo.jpg"
+            alt="MediCloud"
+            width={144}
+            height={48}
+            priority
+            style={{height: '44px', width: 'auto', display: 'block', objectFit: 'contain'}}
+          />
         </Link>
         <div className="top-note">
           <span>{isSignup ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'}</span>
@@ -646,6 +702,26 @@ export function AuthScreen({ mode }: AuthScreenProps) {
                 </p>
               </>
             )}
+          </div>
+
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '14px',
+              padding: '12px 18px',
+              boxShadow: '0 10px 28px rgba(7, 45, 34, 0.22)',
+              maxWidth: '320px',
+              marginInline: 'auto',
+            }}
+          >
+            <Image
+              src="/images/medicloud-banner.jpg"
+              alt="MediCloud"
+              width={1024}
+              height={341}
+              priority
+              style={{width: '100%', height: 'auto', display: 'block', objectFit: 'contain'}}
+            />
           </div>
 
           <div className="art">
@@ -843,7 +919,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
                         onChange={(e) => handleConsentChange(e.target.checked)}
                       />
                       <span>
-                        Tôi hiểu đây là giao diện thử nghiệm và không nhập dữ liệu thật.
+                        Tôi đồng ý với Điều khoản sử dụng và Chính sách bảo mật của MediCloud.
                       </span>
                     </label>
                     {consentError && (
@@ -928,6 +1004,57 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               </button>
             </form>
 
+            {!isSignup && showResetPanel && (
+              <form className="auth-form" method="POST" onSubmit={handleConfirmReset} style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #d5e6df' }}>
+                <div className="field">
+                  <label htmlFor="reset-token">Mã khôi phục mật khẩu</label>
+                  <input
+                    id="reset-token"
+                    name="reset-token"
+                    type="text"
+                    required
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="Dán mã khôi phục"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="reset-new-password">Mật khẩu mới (tối thiểu 12 ký tự)</label>
+                  <input
+                    id="reset-new-password"
+                    name="reset-new-password"
+                    type="password"
+                    required
+                    minLength={12}
+                    autoComplete="new-password"
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới"
+                  />
+                </div>
+                {resetStatus && (
+                  <div className="status" role="status" aria-live="polite">
+                    {resetStatus}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="primary" type="submit" disabled={isResetting} style={{ flex: 1 }}>
+                    <span>{isResetting ? 'Đang xử lý…' : 'Xác nhận đặt lại mật khẩu'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={handleForgotPassword}
+                    disabled={isResetting}
+                  >
+                    Gửi lại mã
+                  </button>
+                </div>
+              </form>
+            )}
+
             {!isSignup && <div className="separator">DÀNH CHO NHÂN VIÊN Y TẾ</div>}
 
             <div className="staff">
@@ -955,7 +1082,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
       <footer className="foot">
         <span>© 2026 MediCloud · Nền tảng y tế số</span>
         <span className="foot-right">
-          <ShieldCheckSvg /> Bản xem trước giao diện · Chỉ dùng dữ liệu giả
+          <ShieldCheckSvg /> Kết nối PostgreSQL · Bảo mật đa tầng
         </span>
       </footer>
 

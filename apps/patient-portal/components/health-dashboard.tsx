@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import Link from 'next/link';
 import {useCallback, useMemo, useState} from 'react';
 import {Layout, LayoutContent} from '@astryxdesign/core/Layout';
@@ -8,11 +9,13 @@ import {
   Bars3Icon,
   CalendarDaysIcon,
   ClipboardDocumentListIcon,
+  Cog6ToothIcon,
   DocumentTextIcon,
   HeartIcon,
   HomeIcon,
   PlusIcon,
   ShieldCheckIcon,
+  UserCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import {AppointmentsPanel} from '@/features/appointments/appointments-panel';
@@ -33,8 +36,16 @@ const LazyBookingWizardModal = dynamic(
   () => import('@/features/appointments/booking/booking-wizard-modal').then((mod) => mod.BookingWizardModal),
   {ssr: false},
 );
+const LazyProfilePanel = dynamic(
+  () => import('@/features/profile/profile-panel').then((mod) => mod.ProfilePanel),
+  {ssr: false},
+);
+const LazyAdminPanel = dynamic(
+  () => import('@/features/admin/admin-panel').then((mod) => mod.AdminPanel),
+  {ssr: false},
+);
 
-export type NavKey = 'overview' | 'appointments' | 'queue' | 'records' | 'vitals' | 'activity' | 'audit';
+export type NavKey = 'overview' | 'appointments' | 'queue' | 'records' | 'vitals' | 'activity' | 'audit' | 'profile' | 'admin';
 
 interface HealthDashboardProps {
   portalRole?: 'patient' | 'staff';
@@ -65,7 +76,12 @@ export function HealthDashboard({portalRole, role, initialTab = 'overview'}: Hea
     }
   }, []);
 
-  const activeResource: WorkspaceResource = activeTab === 'activity' ? 'audit' : activeTab;
+  const activeResource: WorkspaceResource =
+    activeTab === 'activity'
+      ? 'audit'
+      : activeTab === 'profile' || activeTab === 'admin'
+        ? 'overview'
+        : activeTab;
   const {
     tenantCode,
     switchTenant,
@@ -98,6 +114,10 @@ export function HealthDashboard({portalRole, role, initialTab = 'overview'}: Hea
         label: effectiveRole === 'staff' ? 'Nhật ký kiểm toán' : 'Nhật ký hoạt động',
         icon: ShieldCheckIcon,
       },
+      {key: 'profile' as const, label: 'Hồ sơ & Bảo mật', icon: UserCircleIcon},
+      ...(effectiveRole === 'staff'
+        ? [{key: 'admin' as const, label: 'Quản trị cơ sở', icon: Cog6ToothIcon}]
+        : []),
     ],
     [effectiveRole],
   );
@@ -130,28 +150,17 @@ export function HealthDashboard({portalRole, role, initialTab = 'overview'}: Hea
             }}
           >
             <header style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px'}}>
-              <Link href="/" style={{display: 'inline-flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: MC_COLORS.textInk}}>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '10px',
-                    backgroundColor: MC_COLORS.brandPrimary,
-                    color: '#ffffff',
-                    display: 'inline-grid',
-                    placeItems: 'center',
-                    fontWeight: 700,
-                    fontSize: '16px',
-                  }}
-                >
-                  +
-                </span>
-                <span style={{display: 'grid', gap: '1px'}}>
-                  <strong style={{fontSize: '16px', fontWeight: 700}}>MediCloud</strong>
-                  <span style={{fontSize: '12px', color: MC_COLORS.textSubtle}}>
-                    {effectiveRole === 'staff' ? 'Cổng nhân viên y tế' : 'Cổng bệnh nhân'}
-                  </span>
+              <Link href="/" style={{display: 'grid', gap: '4px', textDecoration: 'none', color: MC_COLORS.textInk}}>
+                <Image
+                  src="/images/medicloud-logo.jpg"
+                  alt="MediCloud"
+                  width={132}
+                  height={44}
+                  priority
+                  style={{width: '132px', height: '44px', objectFit: 'contain', display: 'block'}}
+                />
+                <span style={{fontSize: '12px', color: MC_COLORS.textSubtle, paddingLeft: '2px'}}>
+                  {effectiveRole === 'staff' ? 'Cổng nhân viên y tế' : 'Cổng bệnh nhân'}
                 </span>
               </Link>
               <button
@@ -235,19 +244,27 @@ export function HealthDashboard({portalRole, role, initialTab = 'overview'}: Hea
             </nav>
 
             <footer style={{borderTop: `1px solid ${MC_COLORS.mintBorder}`, paddingTop: '12px', display: 'grid', gap: '8px'}}>
-              <Link
-                href="/login"
+              <button
+                type="button"
+                onClick={async () => {
+                  await fetch('/api/bff/session', { method: 'DELETE', credentials: 'same-origin' });
+                  window.location.assign('/login');
+                }}
                 style={{
+                  background: 'none',
+                  border: 0,
+                  padding: 0,
+                  textAlign: 'left',
+                  cursor: 'pointer',
                   fontSize: '13px',
                   fontWeight: 600,
                   color: MC_COLORS.brandInk,
-                  textDecoration: 'none',
                 }}
               >
-                Tài khoản & Đăng nhập →
-              </Link>
+                Đăng xuất →
+              </button>
               <span style={{fontSize: '12px', color: MC_COLORS.textSubtle}}>
-                Dữ liệu giả lập P0 · Bảo mật đa tầng
+                MediCloud · Bảo mật đa tầng
               </span>
             </footer>
           </aside>
@@ -423,6 +440,10 @@ export function HealthDashboard({portalRole, role, initialTab = 'overview'}: Hea
                     onLoadMore={() => loadMore('audit')}
                   />
                 )}
+
+                {activeTab === 'profile' && <LazyProfilePanel />}
+
+                {activeTab === 'admin' && effectiveRole === 'staff' && <LazyAdminPanel />}
               </>
             )}
           </main>

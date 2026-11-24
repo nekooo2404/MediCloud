@@ -138,11 +138,19 @@ model Department {
 }
 
 model User {
-  id                    String               @id @default(uuid()) @db.Uuid
-  subject               String               @unique @db.VarChar(255)
-  status                UserStatus           @default(ACTIVE)
-  memberships           Membership[]
-  patients              Patient[]            @relation("PatientUser")
+  id                         String               @id @default(uuid()) @db.Uuid
+  subject                    String               @unique @db.VarChar(255)
+  email                      String?              @unique @db.VarChar(255)
+  passwordHash               String?              @db.VarChar(255)
+  displayName                String?              @db.VarChar(160)
+  emailVerifiedAt            DateTime?            @db.Timestamptz(3)
+  emailVerificationTokenHash String?              @db.VarChar(128)
+  passwordResetTokenHash     String?              @db.VarChar(128)
+  passwordResetExpiresAt     DateTime?            @db.Timestamptz(3)
+  status                     UserStatus           @default(ACTIVE)
+  memberships                Membership[]
+  sessions                   UserSession[]
+  patients                   Patient[]            @relation("PatientUser")
   guardianDelegations   GuardianDelegation[] @relation("GuardianUser")
   practitioners         Practitioner[]
   auditEvents           AuditEvent[]
@@ -166,6 +174,21 @@ model Membership {
   @@unique([tenantId, userId, role])
   @@index([tenantId, userId])
   @@map("memberships")
+}
+
+model UserSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tenantId  String    @db.Uuid
+  tokenHash String    @unique @db.VarChar(128)
+  role      String    @db.VarChar(32)
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("user_sessions")
 }
 
 model Patient {

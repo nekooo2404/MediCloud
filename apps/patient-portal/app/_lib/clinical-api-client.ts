@@ -82,13 +82,59 @@ export function assertClinicalApiConfigured(role: 'patient' | 'staff'): {
   const defaultDevToken = role === 'staff' ? 'synthetic-bff-staff' : 'synthetic-bff-patient';
   const serviceToken =
     process.env.CLINICAL_API_BEARER_TOKEN || process.env.CLINICAL_API_SERVICE_TOKEN || (isProd ? '' : defaultDevToken);
+  const hasOidcClientCreds = Boolean(
+    process.env.OIDC_TOKEN_URL && process.env.OIDC_CLIENT_ID && process.env.OIDC_CLIENT_SECRET,
+  );
   const signingSecret = process.env.BFF_ACTOR_SIGNING_SECRET || (isProd ? '' : DEFAULT_ACTOR_SIGNING_SECRET);
 
-  if (isProd && (!baseUrl || !serviceToken || !signingSecret || signingSecret.length < 16)) {
-    throw new Error('Fail-closed production config: CLINICAL_API_BASE_URL, CLINICAL_API_SERVICE_TOKEN, and BFF_ACTOR_SIGNING_SECRET are required');
+  if (isProd && (!baseUrl || (!serviceToken && !hasOidcClientCreds) || !signingSecret || signingSecret.length < 16)) {
+    throw new Error(
+      'Fail-closed production config: CLINICAL_API_BASE_URL, BFF_ACTOR_SIGNING_SECRET, and CLINICAL_API_SERVICE_TOKEN or OIDC_TOKEN_URL credentials are required',
+    );
   }
 
   return {baseUrl, serviceToken, signingSecret};
+}
+
+let cachedOidcToken: {accessToken: string; expiresAtMs: number} | null = null;
+
+async function resolveBearerToken(fallbackToken: string): Promise<string> {
+  const tokenUrl = process.env.OIDC_TOKEN_URL;
+  const clientId = process.env.OIDC_CLIENT_ID;
+  const clientSecret = process.env.OIDC_CLIENT_SECRET;
+  if (!tokenUrl || !clientId || !clientSecret) {
+    return fallbackToken;
+  }
+  if (cachedOidcToken && cachedOidcToken.expiresAtMs - 30_000 > Date.now()) {
+    return cachedOidcToken.accessToken;
+  }
+  const params = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret,
+  });
+  if (process.env.OIDC_SCOPE) {
+    params.set('scope', process.env.OIDC_SCOPE);
+  }
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {'content-type': 'application/x-www-form-urlencoded'},
+    body: params.toString(),
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(`OIDC client_credentials exchange failed (${response.status})`);
+  }
+  const payload = (await response.json()) as {access_token?: string; expires_in?: number};
+  if (!payload.access_token) {
+    throw new Error('OIDC client_credentials response missing access_token');
+  }
+  const ttlMs = (typeof payload.expires_in === 'number' && payload.expires_in > 0 ? payload.expires_in : 300) * 1000;
+  cachedOidcToken = {
+    accessToken: payload.access_token,
+    expiresAtMs: Date.now() + ttlMs,
+  };
+  return payload.access_token;
 }
 
 function buildSignedActorHeaders(
@@ -156,13 +202,14 @@ export async function callClinicalApi<T>(path: string, init: ClinicalApiCallInit
   const tenantCode = init.tenantCode ?? init.session?.tenantId;
   const timeoutMs = Number(process.env.CLINICAL_API_TIMEOUT_MS ?? (init.method === 'GET' ? 3500 : 5000));
 
+  const bearerToken = await resolveBearerToken(serviceToken);
   const headers: Record<string, string> = {
     'x-correlation-id': correlationId,
     accept: 'application/json',
     ...buildSignedActorHeaders(signingSecret, actorSubject, role, tenantCode),
   };
-  if (serviceToken) {
-    headers.authorization = `Bearer ${serviceToken}`;
+  if (bearerToken) {
+    headers.authorization = `Bearer ${bearerToken}`;
   }
   if (tenantCode) {
     headers['x-tenant-id'] = tenantCode;

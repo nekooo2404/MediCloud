@@ -1,0 +1,19 @@
+{
+  # Tự động cấp chứng chỉ nội bộ cho localhost hoặc Let's Encrypt khi cấu hình domain thật
+}
+
+{$PATIENT_SITE:https://localhost} {
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+  }
+  reverse_proxy patient-portal:3000
+}
+
+{$STAFF_SITE:https://localhost:8443} {
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+  }
+  reverse_proxy staff-portal:3001
+}

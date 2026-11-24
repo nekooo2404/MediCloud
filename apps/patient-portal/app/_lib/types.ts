@@ -1,4 +1,4 @@
-export type MembershipRole = 'PATIENT' | 'RECEPTIONIST';
+export type MembershipRole = 'PATIENT' | 'GUARDIAN' | 'RECEPTIONIST' | 'PHYSICIAN' | 'NURSE' | 'AUDITOR';
 
 export type SyntheticPersonaId =
   | 'patient-hospital-a'
@@ -72,8 +72,11 @@ export interface SyntheticPersona {
 }
 
 export interface ActiveSession {
-  personaId: SyntheticPersonaId;
+  sessionId?: string;
+  personaId?: SyntheticPersonaId;
   subject: string;
+  email?: string;
+  emailVerified?: boolean;
   tenantId: string;
   tenantCode: string;
   tenantName: string;

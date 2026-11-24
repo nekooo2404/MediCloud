@@ -1,4 +1,6 @@
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { SESSION_COOKIE_NAME, verifySessionCookieValue } from '@/app/_lib/session'
 import { HealthDashboard, type NavKey } from '@/components/health-dashboard'
 
 export const dynamic = 'force-dynamic'
@@ -9,6 +11,7 @@ const PATIENT_TABS: ReadonlySet<NavKey> = new Set([
   'records',
   'vitals',
   'activity',
+  'profile',
 ])
 
 const STAFF_TABS: ReadonlySet<NavKey> = new Set([
@@ -18,6 +21,8 @@ const STAFF_TABS: ReadonlySet<NavKey> = new Set([
   'records',
   'vitals',
   'activity',
+  'profile',
+  'admin',
 ])
 
 function resolveInitialTab(
@@ -37,7 +42,15 @@ export default async function Home({
 }: {
   searchParams: Promise<{ tab?: string | string[] }>
 }) {
-  const [headerList, resolvedParams] = await Promise.all([headers(), searchParams])
+  const [cookieStore, headerList, resolvedParams] = await Promise.all([
+    cookies(),
+    headers(),
+    searchParams,
+  ])
+  const session = verifySessionCookieValue(cookieStore.get(SESSION_COOKIE_NAME)?.value)
+  if (!session) {
+    redirect('/login')
+  }
   const host = headerList.get('host') ?? ''
   const envRole = process.env.NEXT_PUBLIC_PORTAL_ROLE
   const portalRole: 'patient' | 'staff' =

@@ -10,6 +10,7 @@ certificates
 coverage
 .vitest
 apps/clinical-api/dist
+apps/event-relay/dist
 docs
 output
 .agents

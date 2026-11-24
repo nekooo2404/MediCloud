@@ -6,6 +6,33 @@ import {
   executeDashboardMutation,
   getDashboardData,
 } from './clinical/dashboard-service.js';
+import {
+  AuthServiceError,
+  authenticateUserByPassword,
+  changeUserPassword,
+  isSessionActive,
+  registerPatientUser,
+  requestPasswordReset,
+  resetPasswordByToken,
+  revokeSession,
+  verifyEmailByToken,
+} from './modules/auth/service.js';
+import {
+  addGuardianDelegation,
+  createDepartmentForTenant,
+  DomainModuleError,
+  getAdminOverview,
+  getPatientProfileView,
+  provisionStaffAccount,
+  publishSlotsForPractitioner,
+  revokeGuardianDelegation,
+  updatePatientProfileView,
+} from './modules/admin/service.js';
+import {
+  checkDistributedRateLimit,
+  recordHttpMetric,
+  renderPrometheusMetrics,
+} from './infra/rate-limiter.js';
 import {createClinicalApiHandler} from './scheduling/http-adapter.js';
 import {AuthenticationError, createOidcVerifier} from './security/oidc-verifier.js';
 import {redactedMutationLog} from './security/redacted-log.js';
@@ -192,18 +219,6 @@ const clinicalHandler = createClinicalApiHandler({
   verifyAuthorizationHeader: async (header, req) => (await authenticateRequest(header, req)).principal,
 });
 
-const rateBuckets = new Map<string, {count: number; windowStart: number}>();
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const current = rateBuckets.get(ip);
-  if (!current || now - current.windowStart > 60_000) {
-    rateBuckets.set(ip, {count: 1, windowStart: now});
-    return true;
-  }
-  current.count += 1;
-  return current.count <= 300;
-}
-
 async function readBodyJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
@@ -243,6 +258,12 @@ function sendJson(req: IncomingMessage, res: ServerResponse, status: number, pay
 }
 
 export async function createClinicalApiRequestHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const startedAt = performance.now();
+  const parsedUrl = new URL(req.url ?? '/', 'http://127.0.0.1:4000');
+  res.on('finish', () => {
+    recordHttpMetric(req.method ?? 'GET', parsedUrl.pathname, res.statusCode, performance.now() - startedAt);
+  });
+
   const incomingCorr = Array.isArray(req.headers['x-correlation-id'])
     ? req.headers['x-correlation-id'][0]
     : req.headers['x-correlation-id'];
@@ -258,7 +279,7 @@ export async function createClinicalApiRequestHandler(req: IncomingMessage, res:
   }
 
   const clientIp = req.socket.remoteAddress ?? '127.0.0.1';
-  if (!checkRateLimit(clientIp)) {
+  if (!(await checkDistributedRateLimit(clientIp))) {
     sendJson(
       req,
       res,
@@ -275,7 +296,16 @@ export async function createClinicalApiRequestHandler(req: IncomingMessage, res:
     return;
   }
 
-  const url = new URL(req.url ?? '/', 'http://127.0.0.1:4000');
+  const url = parsedUrl;
+
+  if (req.method === 'GET' && url.pathname === '/v1/metrics') {
+    res.writeHead(200, {
+      'content-type': 'text/plain; version=0.0.4; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    res.end(renderPrometheusMetrics());
+    return;
+  }
 
   if (req.method === 'GET' && url.pathname === '/v1/health') {
     try {
@@ -310,6 +340,266 @@ export async function createClinicalApiRequestHandler(req: IncomingMessage, res:
       );
     }
     return;
+  }
+
+  if (req.method === 'POST' && (url.pathname === '/v1/auth/signup' || url.pathname === '/v1/auth/login')) {
+    try {
+      const payload = (await readBodyJson(req)) as Record<string, unknown>;
+      if (url.pathname === '/v1/auth/signup') {
+        const result = await registerPatientUser(prisma, {
+          fullName: typeof payload.fullName === 'string' ? payload.fullName : '',
+          email: typeof payload.email === 'string' ? payload.email : '',
+          password: typeof payload.password === 'string' ? payload.password : '',
+          tenantCode: typeof payload.tenantCode === 'string' ? payload.tenantCode : undefined,
+        });
+        sendJson(
+          req,
+          res,
+          200,
+          {
+            session: result.session,
+            ...(IS_PRODUCTION ? {} : {emailVerificationToken: result.emailVerificationToken}),
+            correlation_id: correlationId,
+          },
+          correlationId,
+        );
+      } else {
+        const session = await authenticateUserByPassword(prisma, {
+          email: typeof payload.email === 'string' ? payload.email : '',
+          password: typeof payload.password === 'string' ? payload.password : '',
+        });
+        sendJson(req, res, 200, {session, correlation_id: correlationId}, correlationId);
+      }
+    } catch (err) {
+      if (err instanceof AuthServiceError) {
+        sendJson(
+          req,
+          res,
+          err.status,
+          {error: {code: err.code, message: err.message, correlation_id: correlationId}},
+          correlationId,
+        );
+        return;
+      }
+      if (err instanceof SyntaxError || err instanceof DashboardAccessError) {
+        sendJson(
+          req,
+          res,
+          400,
+          {error: {code: 'invalid_json', message: 'Dữ liệu gửi lên không hợp lệ.', correlation_id: correlationId}},
+          correlationId,
+        );
+        return;
+      }
+      sendJson(
+        req,
+        res,
+        500,
+        {error: {code: 'auth_internal_error', message: 'Không thể xử lý xác thực lúc này.', correlation_id: correlationId}},
+        correlationId,
+      );
+    }
+    return;
+  }
+
+  if (
+    url.pathname === '/v1/auth/verify-email' ||
+    url.pathname === '/v1/auth/forgot-password' ||
+    url.pathname === '/v1/auth/reset-password' ||
+    url.pathname === '/v1/auth/change-password' ||
+    url.pathname === '/v1/auth/session' ||
+    url.pathname === '/v1/auth/session/revoke'
+  ) {
+    try {
+      if (req.method === 'GET' && url.pathname === '/v1/auth/session') {
+        const sessionId = url.searchParams.get('sessionId') ?? '';
+        const active = sessionId ? await isSessionActive(prisma, sessionId) : false;
+        sendJson(req, res, 200, {active, correlation_id: correlationId}, correlationId);
+        return;
+      }
+      const payload = (await readBodyJson(req)) as Record<string, unknown>;
+      if (req.method === 'POST' && url.pathname === '/v1/auth/verify-email') {
+        const result = await verifyEmailByToken(prisma, typeof payload.token === 'string' ? payload.token : '');
+        sendJson(req, res, 200, {...result, correlation_id: correlationId}, correlationId);
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/v1/auth/forgot-password') {
+        const result = await requestPasswordReset(prisma, typeof payload.email === 'string' ? payload.email : '');
+        sendJson(
+          req,
+          res,
+          200,
+          {
+            accepted: result.accepted,
+            ...(IS_PRODUCTION ? {} : {resetToken: result.resetToken}),
+            correlation_id: correlationId,
+          },
+          correlationId,
+        );
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/v1/auth/reset-password') {
+        const result = await resetPasswordByToken(prisma, {
+          token: typeof payload.token === 'string' ? payload.token : '',
+          newPassword: typeof payload.newPassword === 'string' ? payload.newPassword : '',
+        });
+        sendJson(req, res, 200, {...result, correlation_id: correlationId}, correlationId);
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/v1/auth/session/revoke') {
+        const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
+        if (sessionId) await revokeSession(prisma, sessionId);
+        sendJson(req, res, 200, {revoked: true, correlation_id: correlationId}, correlationId);
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/v1/auth/change-password') {
+        const {principal} = await authenticateRequest(req.headers.authorization, req);
+        const result = await changeUserPassword(prisma, {
+          subject: principal.subject,
+          currentPassword: typeof payload.currentPassword === 'string' ? payload.currentPassword : '',
+          newPassword: typeof payload.newPassword === 'string' ? payload.newPassword : '',
+          currentSessionId: typeof payload.currentSessionId === 'string' ? payload.currentSessionId : undefined,
+        });
+        sendJson(req, res, 200, {...result, correlation_id: correlationId}, correlationId);
+        return;
+      }
+    } catch (err) {
+      if (err instanceof AuthenticationError) {
+        sendJson(req, res, 401, {error: {code: 'unauthorized', message: err.message, correlation_id: correlationId}}, correlationId);
+        return;
+      }
+      if (err instanceof AuthServiceError) {
+        sendJson(req, res, err.status, {error: {code: err.code, message: err.message, correlation_id: correlationId}}, correlationId);
+        return;
+      }
+      sendJson(req, res, 400, {error: {code: 'invalid_auth_request', message: 'Yêu cầu xác thực không hợp lệ.', correlation_id: correlationId}}, correlationId);
+      return;
+    }
+  }
+
+  if (url.pathname === '/v1/profile' || url.pathname === '/v1/admin') {
+    try {
+      const {principal, tenantCode} = await authenticateRequest(req.headers.authorization, req);
+      const effectiveTenant = tenantCode ?? url.searchParams.get('tenantCode') ?? undefined;
+      if (url.pathname === '/v1/profile') {
+        if (req.method === 'GET') {
+          const data = await getPatientProfileView(prisma, principal, effectiveTenant);
+          sendJson(req, res, 200, {...data, correlation_id: correlationId}, correlationId);
+          return;
+        }
+        if (req.method === 'POST') {
+          const payload = (await readBodyJson(req)) as Record<string, unknown>;
+          if (payload.action === 'add_guardian') {
+            const guardian = await addGuardianDelegation(
+              prisma,
+              principal,
+              {
+                guardianEmail: typeof payload.guardianEmail === 'string' ? payload.guardianEmail : '',
+                relationship: typeof payload.relationship === 'string' ? payload.relationship : undefined,
+                scope: typeof payload.scope === 'string' ? payload.scope : undefined,
+              },
+              effectiveTenant,
+            );
+            sendJson(req, res, 200, {guardian, correlation_id: correlationId}, correlationId);
+            return;
+          }
+          if (payload.action === 'revoke_guardian') {
+            const resData = await revokeGuardianDelegation(
+              prisma,
+              principal,
+              typeof payload.delegationId === 'string' ? payload.delegationId : '',
+              effectiveTenant,
+            );
+            sendJson(req, res, 200, {...resData, correlation_id: correlationId}, correlationId);
+            return;
+          }
+          const profile = await updatePatientProfileView(
+            prisma,
+            principal,
+            {
+              displayName: typeof payload.displayName === 'string' ? payload.displayName : undefined,
+              bloodType: typeof payload.bloodType === 'string' ? payload.bloodType : undefined,
+              allergies: Array.isArray(payload.allergies) ? payload.allergies.map(String) : undefined,
+              careTeamNotes: typeof payload.careTeamNotes === 'string' ? payload.careTeamNotes : undefined,
+            },
+            effectiveTenant,
+          );
+          sendJson(req, res, 200, {profile, correlation_id: correlationId}, correlationId);
+          return;
+        }
+      }
+
+      if (url.pathname === '/v1/admin') {
+        if (req.method === 'GET') {
+          const data = await getAdminOverview(prisma, principal, effectiveTenant);
+          sendJson(req, res, 200, {...data, correlation_id: correlationId}, correlationId);
+          return;
+        }
+        if (req.method === 'POST') {
+          const payload = (await readBodyJson(req)) as Record<string, unknown>;
+          if (payload.action === 'create_department') {
+            const data = await createDepartmentForTenant(
+              prisma,
+              principal,
+              {
+                organizationName: typeof payload.organizationName === 'string' ? payload.organizationName : undefined,
+                departmentName: typeof payload.departmentName === 'string' ? payload.departmentName : '',
+                departmentCode: typeof payload.departmentCode === 'string' ? payload.departmentCode : undefined,
+              },
+              effectiveTenant,
+            );
+            sendJson(req, res, 200, {...data, correlation_id: correlationId}, correlationId);
+            return;
+          }
+          if (payload.action === 'provision_staff') {
+            const data = await provisionStaffAccount(
+              prisma,
+              principal,
+              {
+                fullName: typeof payload.fullName === 'string' ? payload.fullName : '',
+                email: typeof payload.email === 'string' ? payload.email : '',
+                password: typeof payload.password === 'string' ? payload.password : '',
+                role: (typeof payload.role === 'string' ? payload.role : 'RECEPTIONIST') as 'PHYSICIAN' | 'RECEPTIONIST' | 'NURSE' | 'AUDITOR',
+                departmentId: typeof payload.departmentId === 'string' ? payload.departmentId : undefined,
+                specialty: typeof payload.specialty === 'string' ? payload.specialty : undefined,
+                roomLabel: typeof payload.roomLabel === 'string' ? payload.roomLabel : undefined,
+                degreeTitle: typeof payload.degreeTitle === 'string' ? payload.degreeTitle : undefined,
+              },
+              effectiveTenant,
+            );
+            sendJson(req, res, 200, {...data, correlation_id: correlationId}, correlationId);
+            return;
+          }
+          if (payload.action === 'publish_slots') {
+            const data = await publishSlotsForPractitioner(
+              prisma,
+              principal,
+              {
+                practitionerId: typeof payload.practitionerId === 'string' ? payload.practitionerId : '',
+                date: typeof payload.date === 'string' ? payload.date : '',
+                startHour: Number(payload.startHour ?? 8),
+                endHour: Number(payload.endHour ?? 17),
+                capacity: Number(payload.capacity ?? 4),
+              },
+              effectiveTenant,
+            );
+            sendJson(req, res, 200, {...data, correlation_id: correlationId}, correlationId);
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof AuthenticationError) {
+        sendJson(req, res, 401, {error: {code: 'unauthorized', message: err.message, correlation_id: correlationId}}, correlationId);
+        return;
+      }
+      if (err instanceof DomainModuleError) {
+        sendJson(req, res, err.status, {error: {code: err.code, message: err.message, correlation_id: correlationId}}, correlationId);
+        return;
+      }
+      sendJson(req, res, 400, {error: {code: 'domain_request_error', message: 'Không thể xử lý yêu cầu.', correlation_id: correlationId}}, correlationId);
+      return;
+    }
   }
 
   if (url.pathname === '/v1/dashboard') {

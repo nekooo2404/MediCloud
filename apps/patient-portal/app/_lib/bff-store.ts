@@ -47,7 +47,7 @@ export function parseSimulationMode(raw: string | null | undefined): PortalSimul
 }
 
 function shouldUseUpstream(): boolean {
-  if (process.env.MEDICLOUD_ENV === 'production') return true;
+  if (process.env.NODE_ENV !== 'test') return true;
   return Boolean(process.env.CLINICAL_API_BASE_URL);
 }
 

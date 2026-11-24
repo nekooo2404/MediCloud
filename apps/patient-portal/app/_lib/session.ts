@@ -12,11 +12,11 @@ export const SYNTHETIC_PERSONAS: readonly SyntheticPersona[] = [
     subject: 'synthetic-subject-1',
     tenantId: '00000000-0000-4000-8000-000000000001',
     tenantCode: 'synthetic-hospital-a',
-    tenantName: 'Bệnh viện Tổng hợp A (Mẫu)',
+    tenantName: 'Bệnh viện Đa khoa MediCloud — Hà Nội',
     role: 'PATIENT',
     patientId: '00000000-0000-4000-8000-000000000030',
     patientRef: 'synthetic-profile-1',
-    displayName: 'Bệnh nhân mẫu #1',
+    displayName: 'Nguyễn Minh An',
     summary: 'Đặt lịch & tra cứu lịch hẹn cá nhân tại Cơ sở A',
   },
   {
@@ -24,7 +24,7 @@ export const SYNTHETIC_PERSONAS: readonly SyntheticPersona[] = [
     subject: 'synthetic-subject-3',
     tenantId: '00000000-0000-4000-8000-000000000001',
     tenantCode: 'synthetic-hospital-a',
-    tenantName: 'Bệnh viện Tổng hợp A (Mẫu)',
+    tenantName: 'Bệnh viện Đa khoa MediCloud — Hà Nội',
     role: 'RECEPTIONIST',
     displayName: 'Lễ tân quầy tiếp nhận A',
     summary: 'Đặt lịch hộ, tra cứu & tiếp nhận tại quầy Cơ sở A',
@@ -34,7 +34,7 @@ export const SYNTHETIC_PERSONAS: readonly SyntheticPersona[] = [
     subject: 'synthetic-subject-2',
     tenantId: '00000000-0000-4000-8000-000000000002',
     tenantCode: 'synthetic-hospital-b',
-    tenantName: 'Bệnh viện Tổng hợp B (Mẫu)',
+    tenantName: 'Phòng khám Chuyên khoa MediCloud — TP.HCM',
     role: 'PATIENT',
     patientId: '00000000-0000-4000-8000-000000000031',
     patientRef: 'synthetic-profile-2',
@@ -62,6 +62,16 @@ function signPayload(encodedPayload: string): string {
   return createHmac('sha256', SYNTHETIC_SESSION_SECRET)
     .update(encodedPayload)
     .digest('base64url');
+}
+
+export function createAccountSessionCookieValue(session: ActiveSession): string {
+  const payload = JSON.stringify({
+    session,
+    iat: Date.now(),
+  });
+  const encodedPayload = Buffer.from(payload, 'utf8').toString('base64url');
+  const signature = signPayload(encodedPayload);
+  return `${encodedPayload}.${signature}`;
 }
 
 export function createSessionCookieValue(personaId: SyntheticPersonaId): string {
@@ -93,7 +103,30 @@ export function verifySessionCookieValue(rawCookie: string | undefined | null): 
   try {
     const parsed = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as {
       personaId?: unknown;
+      session?: Partial<ActiveSession>;
     };
+    if (
+      parsed.session &&
+      typeof parsed.session.subject === 'string' &&
+      typeof parsed.session.tenantId === 'string' &&
+      typeof parsed.session.tenantCode === 'string' &&
+      typeof parsed.session.role === 'string' &&
+      typeof parsed.session.displayName === 'string'
+    ) {
+      return {
+        sessionId: typeof parsed.session.sessionId === 'string' ? parsed.session.sessionId : undefined,
+        subject: parsed.session.subject,
+        email: typeof parsed.session.email === 'string' ? parsed.session.email : undefined,
+        emailVerified: typeof parsed.session.emailVerified === 'boolean' ? parsed.session.emailVerified : undefined,
+        tenantId: parsed.session.tenantId,
+        tenantCode: parsed.session.tenantCode,
+        tenantName: typeof parsed.session.tenantName === 'string' ? parsed.session.tenantName : parsed.session.tenantCode,
+        role: parsed.session.role as ActiveSession['role'],
+        patientId: typeof parsed.session.patientId === 'string' ? parsed.session.patientId : undefined,
+        patientRef: typeof parsed.session.patientRef === 'string' ? parsed.session.patientRef : undefined,
+        displayName: parsed.session.displayName,
+      };
+    }
     if (typeof parsed.personaId !== 'string') return null;
     const persona = getSyntheticPersona(parsed.personaId);
     if (!persona) return null;

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import {
   CalendarDaysIcon,
   CheckCircleIcon,
@@ -26,6 +27,55 @@ export function OverviewPanel({role, overview, onOpenBooking, onNavigate}: Overv
 
   return (
     <section aria-label="Tổng quan hoạt động" style={{display: 'grid', gap: '20px'}}>
+      <article
+        style={{
+          backgroundColor: '#ffffff',
+          border: `1px solid ${MC_COLORS.mintBorder}`,
+          borderRadius: '14px',
+          padding: '18px 22px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '16px',
+        }}
+      >
+        <section style={{display: 'grid', gap: '6px', maxWidth: '520px'}}>
+          <span style={{fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: MC_COLORS.brandPrimary}}>
+            {role === 'staff' ? 'Không gian điều hành lâm sàng' : 'Hệ sinh thái chăm sóc sức khỏe số'}
+          </span>
+          <h2 style={{margin: 0, fontSize: '20px', fontWeight: 700, color: MC_COLORS.textInk}}>
+            {overview.tenant.name}
+          </h2>
+          <p style={{margin: 0, fontSize: '13px', color: MC_COLORS.textMuted}}>
+            {role === 'staff'
+              ? 'Quản lý hàng đợi khám bệnh, ghi nhận chỉ số sinh hiệu và đồng bộ hồ sơ chuẩn y tế.'
+              : 'Theo dõi lịch hẹn, hồ sơ khám bệnh và chỉ số sức khỏe cá nhân mọi lúc, mọi nơi.'}
+          </p>
+        </section>
+        <figure
+          style={{
+            margin: 0,
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            border: `1px solid ${MC_COLORS.mintBorder}`,
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Image
+            src="/images/medicloud-banner.jpg"
+            alt="MediCloud"
+            width={240}
+            height={80}
+            priority
+            style={{width: '240px', height: '80px', objectFit: 'contain', display: 'block'}}
+          />
+        </figure>
+      </article>
+
       <section className="mc-kpi-grid" aria-label="Chỉ số tổng quan">
         {role === 'patient' ? (
           <>
