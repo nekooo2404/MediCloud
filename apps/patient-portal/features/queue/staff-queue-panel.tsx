@@ -303,6 +303,26 @@ export function StaffQueuePanel({
                             </span>
                           )
                         )}
+                        {t.encounter && (t.encounter.status === 'OPEN' || t.encounter.status === 'IN_PROGRESS') &&
+                          (!activePractitionerId || t.practitionerId === activePractitionerId) && (
+                          <button
+                            type="button"
+                            disabled={Boolean(mutatingKey)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTicketId(t.id);
+                              void safeRun(`complete-${t.encounter!.id}`, {
+                                action: 'complete_encounter',
+                                encounterId: t.encounter!.id,
+                                expectedVersion: t.encounter!.version,
+                              });
+                            }}
+                            style={primaryBtnSmallStyle}
+                          >
+                            <CheckBadgeIcon style={{width: 14, height: 14}} />
+                            <span>Xác nhận khám xong</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
